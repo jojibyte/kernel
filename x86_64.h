@@ -287,7 +287,10 @@ struct CpuRegs {
 void gdt_init(void);
 void idt_init(void);
 void tss_init(void);
+void tss_set_rsp0(uint64_t rsp0);
 void pic_init(void);
 void pic_send_eoi(uint8_t irq);
+
+extern struct Tss kernel_tss;
 
 #endif

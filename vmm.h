@@ -14,6 +14,8 @@
 #define PTE_GLOBAL      BIT(8)
 #define PTE_NX          BIT(63)
 
+#define PTE_COW         BIT(9)
+
 #define PTE_ADDR_MASK   0x000FFFFFFFFFF000ULL
 
 #define KERNEL_VIRT_BASE    0xFFFFFFFF80000000ULL
@@ -54,6 +56,12 @@ struct AddressSpace *vmm_get_kernel_address_space(void);
 void vmm_map_kernel_page(virt_addr_t virt, phys_addr_t phys, uint64_t flags);
 virt_addr_t vmm_alloc_kernel_pages(size_t count);
 void vmm_free_kernel_pages(virt_addr_t addr, size_t count);
+
+struct AddressSpace *vmm_clone_address_space(struct AddressSpace *src);
+int vmm_copy_page_range(struct AddressSpace *dst, struct AddressSpace *src,
+                        virt_addr_t start, virt_addr_t end);
+void vmm_mark_cow(struct AddressSpace *as, virt_addr_t start, virt_addr_t end);
+int vmm_handle_cow_fault(virt_addr_t fault_addr);
 
 static inline virt_addr_t phys_to_virt(phys_addr_t phys) {
     return phys + KERNEL_VIRT_BASE;

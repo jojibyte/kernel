@@ -9,7 +9,7 @@ static struct GdtPtr gdt_ptr;
 static struct IdtEntry idt[256];
 static struct IdtPtr idt_ptr;
 
-static struct Tss kernel_tss;
+struct Tss kernel_tss;
 
 static uint8_t __aligned(16) interrupt_stack[8192];
 static uint8_t __aligned(16) double_fault_stack[8192];
@@ -123,6 +123,10 @@ void tss_init(void) {
     kernel_tss.iopb_offset = sizeof(kernel_tss);
     
     __asm__ __volatile__("ltr %%ax" : : "a"(GDT_TSS));
+}
+
+void tss_set_rsp0(uint64_t rsp0) {
+    kernel_tss.rsp0 = rsp0;
 }
 
 void pic_init(void) {

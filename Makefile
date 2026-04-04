@@ -43,7 +43,9 @@ C_SOURCES = kernel.c \
             scheduler.c \
             vfs.c \
             net.c \
-            syscall.c
+            syscall.c \
+            usermode.c \
+            elf.c
 
 ASM_SOURCES = boot.asm
 

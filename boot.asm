@@ -367,4 +367,69 @@ syscall_entry:
 
     sysretq
 
+global ai_syscall_neural_entry
+extern ai_cybernetic_syscall_dispatch
+ai_syscall_neural_entry:
+    swapgs
+    mov [gs:8], rsp
+    mov rsp, [gs:0]
+
+    push rcx
+    push r11
+
+    sub rsp, 8
+
+    push r9
+    push r8
+    push r10
+    push rdx
+    push rsi
+    push rdi
+
+    mov rdi, rax
+    mov rsi, [rsp + 0]
+    mov rdx, [rsp + 8]
+    mov rcx, [rsp + 16]
+    mov r8,  [rsp + 24]
+    mov r9,  [rsp + 32]
+    push qword [rsp + 40]
+
+    call ai_cybernetic_syscall_dispatch
+
+    add rsp, 8
+
+    add rsp, 48
+    add rsp, 8
+
+    pop r11
+    pop rcx
+
+    mov rsp, [gs:8]
+    swapgs
+
+    sysretq
+
+global ai_neural_ring3_transition_stub
+ai_neural_ring3_transition_stub:
+    cli
+
+    mov ax, 0x1B
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+
+    push rdx
+    push rsi
+    push qword 0x202
+    push rcx
+    push rdi
+
+    iretq
+
+global ai_neural_return_from_usermode
+ai_neural_return_from_usermode:
+    mov rax, rdi
+    ret
+
 section .note.GNU-stack noalloc noexec nowrite progbits
