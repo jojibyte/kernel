@@ -10,3 +10,8 @@ build/
 *~
 .vscode/
 .idea/
+*.PNG
+*.png
+*.jpg
+*.jpeg
+*.bmp
