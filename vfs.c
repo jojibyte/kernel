@@ -315,11 +315,6 @@ struct VfsNode *vfs_resolve_path(const char *path) {
         node = vfs_finddir(node, component);
         if (!node) return NULL;
         
-        struct MountPoint *mp = mount_points;
-        while (mp) {
-            mp = mp->next;
-        }
-        
         if (*p == '/') p++;
     }
     
