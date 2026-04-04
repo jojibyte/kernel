@@ -116,8 +116,12 @@ run-iso: iso
 		-serial stdio \
 		-no-reboot
 
+test:
+	$(MAKE) -C tests run
+
 clean:
 	rm -rf $(BUILD_DIR)
+	$(MAKE) -C tests clean
 
 help:
 	@echo "kernel x86-64 Build System"
