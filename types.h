@@ -84,6 +84,9 @@ typedef uint32_t                blksize_t;
 #define EINVAL          22
 #define EBADF           9
 #define ENOSYS          38
+#define EAFNOSUPPORT    97
+#define EADDRINUSE      98
+#define EPROTONOSUPPORT 93
 
 #define container_of(ptr, type, member) ({                      \
     const typeof(((type *)0)->member) *__mptr = (ptr);          \

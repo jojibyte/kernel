@@ -86,8 +86,10 @@ void __noreturn kernel_main(uint32_t mb_info_addr, uint32_t mb_magic) {
     vfs_init();
     kprintf("OK\n");
 
-    kprintf("[NET]  Initializing network... (Heap free: %llu used: %llu) ", (unsigned long long)heap_get_free(), (unsigned long long)heap_get_used());
+    kprintf("[NET]  Initializing network... ");
     net_init();
+    udp_init();
+    socket_init();
     kprintf("OK\n");
 
     kprintf("[USER] Initializing Ring 3 subsystem... ");

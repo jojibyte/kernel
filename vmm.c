@@ -172,7 +172,6 @@ virt_addr_t vmm_alloc_kernel_pages(size_t count) {
     for (size_t i = 0; i < count; i++) {
         phys_addr_t phys = pmm_alloc_page();
         if (!phys) {
-            kprintf("[DEBUG] vmm_alloc_kernel_pages: pmm_alloc_page failed at index %llu\n", (unsigned long long)i);
             for (size_t j = 0; j < i; j++) {
                 vmm_unmap_page(virt + j * PAGE_SIZE);
             }

@@ -141,6 +141,27 @@ int icmp_send_echo_request(struct Ipv4Addr dest, uint16_t id, uint16_t seq);
 void arp_receive(struct NetInterface *iface, struct ArpHeader *arp);
 int arp_resolve(struct Ipv4Addr ip, uint8_t *mac);
 
+void udp_receive(struct IpHeader *ip, void *data, size_t len);
+int udp_send(struct Ipv4Addr dest, uint16_t src_port, uint16_t dest_port, const void *data, size_t len);
+
+void udp_init(void);
+int udp_socket_create(void);
+int udp_socket_bind(int sockfd, struct Ipv4Addr addr, uint16_t port);
+int udp_socket_sendto(int sockfd, const void *data, size_t len,
+                      struct Ipv4Addr dest_addr, uint16_t dest_port);
+int udp_socket_recvfrom(int sockfd, void *buf, size_t len,
+                        struct Ipv4Addr *src_addr, uint16_t *src_port);
+void udp_socket_close(int sockfd);
+
+void socket_init(void);
+int sys_socket(int domain, int type, int protocol);
+int sys_bind(int sockfd, const struct SockaddrIn *addr);
+int sys_sendto(int sockfd, const void *buf, size_t len,
+               int flags, const struct SockaddrIn *dest_addr);
+int sys_recvfrom(int sockfd, void *buf, size_t len,
+                 int flags, struct SockaddrIn *src_addr);
+int sys_socket_close(int sockfd);
+
 uint16_t htons(uint16_t val);
 uint16_t ntohs(uint16_t val);
 uint32_t htonl(uint32_t val);

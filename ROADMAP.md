@@ -123,10 +123,15 @@
 - [ ] Routing table
 
 ### Layer 4 - Transport
-- [ ] UDP implementation
+- [x] UDP implementation
 - [ ] TCP state machine
 - [ ] TCP sliding window
 - [ ] TCP retransmission
+
+### Socket API
+- [x] Socket abstraction layer (socket.c)
+- [x] sys_socket / sys_bind / sys_sendto / sys_recvfrom syscalls
+- [x] UDP datagram queuing (ring buffer)
 
 ### Application Protocols
 - [ ] DHCP client

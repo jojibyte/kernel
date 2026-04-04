@@ -43,6 +43,8 @@ C_SOURCES = kernel.c \
             scheduler.c \
             vfs.c \
             net.c \
+            udp.c \
+            socket.c \
             syscall.c \
             usermode.c \
             elf.c

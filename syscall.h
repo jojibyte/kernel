@@ -40,6 +40,11 @@
 #define SYS_GETPPID     110
 #define SYS_CLOCK_GETTIME 228
 
+#define SYS_SOCKET      41
+#define SYS_BIND        49
+#define SYS_SENDTO      44
+#define SYS_RECVFROM    45
+
 struct SyscallArgs {
     uint64_t arg1;
     uint64_t arg2;

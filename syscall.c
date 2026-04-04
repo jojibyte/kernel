@@ -7,6 +7,7 @@
 #include "pmm.h"
 #include "vmm.h"
 #include "syscall.h"
+#include "net.h"
 
 static void strncpy(char *dest, const char *src, size_t n) {
     size_t i;
@@ -274,6 +275,16 @@ int64_t syscall_handler(uint64_t syscall_num, struct SyscallArgs *args) {
         return sys_mkdir((const char *)args->arg1, args->arg2);
     case SYS_CHDIR:
         return sys_chdir((const char *)args->arg1);
+    case SYS_SOCKET:
+        return sys_socket(args->arg1, args->arg2, args->arg3);
+    case SYS_BIND:
+        return sys_bind(args->arg1, (const struct SockaddrIn *)args->arg2);
+    case SYS_SENDTO:
+        return sys_sendto(args->arg1, (const void *)args->arg2, args->arg3,
+                          args->arg4, (const struct SockaddrIn *)args->arg5);
+    case SYS_RECVFROM:
+        return sys_recvfrom(args->arg1, (void *)args->arg2, args->arg3,
+                            args->arg4, (struct SockaddrIn *)args->arg5);
     default:
         kprintf("[SYSCALL] Unknown syscall: %llu\n", (unsigned long long)syscall_num);
         return -ENOSYS;

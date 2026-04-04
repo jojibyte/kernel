@@ -146,6 +146,7 @@ void net_receive_packet(struct NetInterface *iface, void *data, size_t len) {
             case IP_PROTO_TCP:
                 break;
             case IP_PROTO_UDP:
+                udp_receive(ip, ip_payload, ip_payload_len);
                 break;
             }
         }
@@ -266,6 +267,46 @@ void icmp_receive(struct IpHeader *ip, void *data, size_t len) {
                 (ip->src_addr >> 16) & 0xFF,
                 (ip->src_addr >> 24) & 0xFF);
     }
+}
+
+int ip_send(struct Ipv4Addr dest, uint8_t protocol, const void *data, size_t len) {
+    struct NetInterface *iface = net_get_default_interface();
+    if (!iface) return -ENODEV;
+
+    size_t packet_len = sizeof(struct EthHeader) + sizeof(struct IpHeader) + len;
+    uint8_t *packet = kzalloc(packet_len);
+    if (!packet) return -ENOMEM;
+
+    struct EthHeader *eth = (struct EthHeader *)packet;
+    struct IpHeader *ip = (struct IpHeader *)(packet + sizeof(struct EthHeader));
+    void *payload = packet + sizeof(struct EthHeader) + sizeof(struct IpHeader);
+
+    uint8_t dest_mac[ETH_ALEN];
+    if (arp_resolve(dest, dest_mac) < 0) {
+        memset(eth->dest, 0xFF, ETH_ALEN);
+    } else {
+        memcpy(eth->dest, dest_mac, ETH_ALEN);
+    }
+    memcpy(eth->src, iface->mac, ETH_ALEN);
+    eth->type = htons(ETH_TYPE_IP);
+
+    ip->version_ihl = 0x45;
+    ip->tos = 0;
+    ip->total_length = htons((uint16_t)(sizeof(struct IpHeader) + len));
+    ip->identification = 0;
+    ip->flags_fragment = 0;
+    ip->ttl = 64;
+    ip->protocol = protocol;
+    ip->checksum = 0;
+    ip->src_addr = iface->ip.addr;
+    ip->dest_addr = dest.addr;
+    ip->checksum = ip_checksum(ip, sizeof(struct IpHeader));
+
+    memcpy(payload, data, len);
+
+    int ret = net_send_packet(iface, packet, packet_len);
+    kfree(packet);
+    return ret;
 }
 
 int icmp_send_echo_request(struct Ipv4Addr dest, uint16_t id, uint16_t seq) {

@@ -115,7 +115,6 @@ void pmm_init(void) {
     phys_addr_t kernel_phys_start = (uint64_t)__kernel_start;
     phys_addr_t kernel_phys_end = (uint64_t)page_array + total_pages * sizeof(struct Page);
     
-    kprintf("[DEBUG] pmm_init reserving %llx - %llx\n", (unsigned long long)kernel_phys_start, (unsigned long long)kernel_phys_end);
     pmm_reserve_range(kernel_phys_start, kernel_phys_end);
     
     pmm_reserve_range(0, 0x100000);
