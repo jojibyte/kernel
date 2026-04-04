@@ -1,26 +1,11 @@
 #include "vfs.h"
 #include "heap.h"
 #include "console.h"
+#include "kstring.h"
 
 static struct VfsNode *vfs_root = NULL;
 static struct Filesystem *filesystems = NULL;
 static struct MountPoint *mount_points = NULL;
-
-static int strcmp(const char *s1, const char *s2) {
-    while (*s1 && *s1 == *s2) {
-        s1++;
-        s2++;
-    }
-    return (unsigned char)*s1 - (unsigned char)*s2;
-}
-
-static void strncpy(char *dest, const char *src, size_t n) {
-    size_t i;
-    for (i = 0; i < n - 1 && src[i]; i++) {
-        dest[i] = src[i];
-    }
-    dest[i] = '\0';
-}
 
 struct RamfsEntry {
     struct VfsNode node;
@@ -45,7 +30,7 @@ static struct RamfsEntry *ramfs_create_entry(const char *name, uint32_t flags, m
     struct RamfsEntry *entry = kzalloc(sizeof(struct RamfsEntry));
     if (!entry) return NULL;
     
-    strncpy(entry->node.name, name, VFS_MAX_NAME);
+    kstrncpy(entry->node.name, name, VFS_MAX_NAME);
     entry->node.flags = flags;
     entry->node.mode = mode;
     entry->node.inode = ramfs_next_inode++;
@@ -179,7 +164,7 @@ static int ramfs_readdir(struct VfsNode *node, struct VfsDirent *entry, uint32_t
     if (!child) return -1;
     
     entry->inode = child->node.inode;
-    strncpy(entry->name, child->node.name, VFS_MAX_NAME);
+    kstrncpy(entry->name, child->node.name, VFS_MAX_NAME);
     
     return 0;
 }
@@ -191,7 +176,7 @@ static struct VfsNode *ramfs_finddir(struct VfsNode *node, const char *name) {
     struct RamfsEntry *child = dir->children;
     
     while (child) {
-        if (strcmp(child->node.name, name) == 0) {
+        if (kstrcmp(child->node.name, name) == 0) {
             return &child->node;
         }
         child = child->next;
@@ -253,7 +238,7 @@ int vfs_register_fs(struct Filesystem *fs) {
 int vfs_mount(const char *path, const char *fs_name, const char *device) {
     struct Filesystem *fs = filesystems;
     while (fs) {
-        if (strcmp(fs->name, fs_name) == 0) break;
+        if (kstrcmp(fs->name, fs_name) == 0) break;
         fs = fs->next;
     }
     
@@ -268,14 +253,14 @@ int vfs_mount(const char *path, const char *fs_name, const char *device) {
         return -ENOMEM;
     }
     
-    strncpy(mp->path, path, VFS_MAX_PATH);
+    kstrncpy(mp->path, path, VFS_MAX_PATH);
     mp->root = root;
     mp->fs = fs;
     
     mp->next = mount_points;
     mount_points = mp;
     
-    if (strcmp(path, "/") == 0) {
+    if (kstrcmp(path, "/") == 0) {
         vfs_root = root;
     }
     
@@ -287,7 +272,7 @@ int vfs_unmount(const char *path) {
     struct MountPoint *mp = mount_points;
     
     while (mp) {
-        if (strcmp(mp->path, path) == 0) {
+        if (kstrcmp(mp->path, path) == 0) {
             if (prev) {
                 prev->next = mp->next;
             } else {
@@ -309,7 +294,7 @@ struct VfsNode *vfs_resolve_path(const char *path) {
     if (!path || path[0] != '/') return NULL;
     if (!vfs_root) return NULL;
     
-    if (strcmp(path, "/") == 0) return vfs_root;
+    if (kstrcmp(path, "/") == 0) return vfs_root;
     
     struct VfsNode *node = vfs_root;
     char component[VFS_MAX_NAME];
@@ -347,7 +332,7 @@ struct VfsNode *vfs_open(const char *path, int flags) {
     
     if (!node && (flags & O_CREAT)) {
         char parent_path[VFS_MAX_PATH];
-        strncpy(parent_path, path, VFS_MAX_PATH);
+        kstrncpy(parent_path, path, VFS_MAX_PATH);
         
         char *last_slash = parent_path;
         for (char *p = parent_path; *p; p++) {
@@ -404,7 +389,7 @@ struct VfsNode *vfs_finddir(struct VfsNode *node, const char *name) {
 
 int vfs_mkdir(const char *path, mode_t mode) {
     char parent_path[VFS_MAX_PATH];
-    strncpy(parent_path, path, VFS_MAX_PATH);
+    kstrncpy(parent_path, path, VFS_MAX_PATH);
     
     char *last_slash = parent_path;
     for (char *p = parent_path; *p; p++) {

@@ -98,7 +98,7 @@ static bool fd_table_init = false;
 
 static void ensure_fd_table(void) {
     if (fd_table_init) return;
-    memset(fd_table, 0, sizeof(fd_table));
+    kmemset(fd_table, 0, sizeof(fd_table));
 
     fd_table[0].type = FD_TYPE_CONSOLE;
     fd_table[1].type = FD_TYPE_CONSOLE;

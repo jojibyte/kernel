@@ -13,6 +13,7 @@ BUILD_DIR = build
 ISO_DIR = $(BUILD_DIR)/isodir
 
 CFLAGS = -ffreestanding \
+         -fno-builtin \
          -fno-stack-protector \
          -fno-pic \
          -mno-red-zone \

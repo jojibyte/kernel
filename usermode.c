@@ -6,23 +6,11 @@
 #include "console.h"
 #include "process.h"
 #include "syscall.h"
+#include "kstring.h"
 
 static struct UsermodeManager *g_usermode_manager = NULL;
 static struct SyscallDispatcher *g_syscall_dispatcher = NULL;
 static struct PerCpuUsermodeData g_per_cpu_usermode_data;
-
-static void *kmalloc_memset(void *dest, int val, size_t count) {
-    uint8_t *ptr = dest;
-    while (count--) *ptr++ = (uint8_t)val;
-    return dest;
-}
-
-static void *kmalloc_memcpy(void *dest, const void *src, size_t count) {
-    uint8_t *d = dest;
-    const uint8_t *s = src;
-    while (count--) *d++ = *s++;
-    return dest;
-}
 
 static void usermode_execute_ring3_transition(struct UsermodeManager *matrix,
                                                struct UserContextFrame *frame) {
@@ -240,7 +228,7 @@ void syscall_dispatcher_destroy(struct SyscallDispatcher *dispatcher) {
 }
 
 void usermode_initialize_subsystem(void) {
-    kmalloc_memset(&g_per_cpu_usermode_data, 0, sizeof(g_per_cpu_usermode_data));
+    kmemset(&g_per_cpu_usermode_data, 0, sizeof(g_per_cpu_usermode_data));
     
     g_usermode_manager = usermode_manager_create();
     if (!g_usermode_manager) {
@@ -293,7 +281,7 @@ int usermode_spawn_process(struct Process *proc, virt_addr_t entry_point,
         
         phys_addr_t code_phys = vmm_get_phys(USERSPACE_CODE_BASE);
         void *code_virt = (void *)phys_to_virt(code_phys);
-        kmalloc_memcpy(code_virt, code_data, code_size);
+        kmemcpy(code_virt, code_data, code_size);
         
         vmm_switch_address_space(saved);
     }

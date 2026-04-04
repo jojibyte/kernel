@@ -3,12 +3,7 @@
 #include "heap.h"
 #include "console.h"
 #include "process.h"
-
-static void *memset(void *s, int c, size_t n) {
-    uint8_t *p = s;
-    while (n--) *p++ = c;
-    return s;
-}
+#include "kstring.h"
 
 #define SOCKET_MAX      64
 #define SOCKET_TYPE_UDP 1
@@ -28,7 +23,7 @@ struct Socket {
 static struct Socket socket_table[SOCKET_MAX];
 
 void socket_init(void) {
-    memset(socket_table, 0, sizeof(socket_table));
+    kmemset(socket_table, 0, sizeof(socket_table));
 }
 
 static int socket_alloc(void) {
@@ -49,7 +44,7 @@ int sys_socket(int domain, int type, int protocol) {
     if (idx < 0) return idx;
 
     struct Socket *sock = &socket_table[idx];
-    memset(sock, 0, sizeof(*sock));
+    kmemset(sock, 0, sizeof(*sock));
 
     switch (type) {
     case SOCK_DGRAM:
@@ -149,6 +144,6 @@ int sys_socket_close(int sockfd) {
         udp_socket_close(sock->udp_fd);
     }
 
-    memset(sock, 0, sizeof(*sock));
+    kmemset(sock, 0, sizeof(*sock));
     return 0;
 }
