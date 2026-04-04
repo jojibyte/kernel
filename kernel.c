@@ -86,16 +86,16 @@ void __noreturn kernel_main(uint32_t mb_info_addr, uint32_t mb_magic) {
     vfs_init();
     kprintf("OK\n");
 
-    kprintf("[NET]  Initializing network... ");
+    kprintf("[NET]  Initializing network... (Heap free: %llu used: %llu) ", (unsigned long long)heap_get_free(), (unsigned long long)heap_get_used());
     net_init();
     kprintf("OK\n");
 
     kprintf("[USER] Initializing Ring 3 subsystem... ");
-    ai_initialize_ring3_subsystem();
+    usermode_initialize_subsystem();
     kprintf("OK\n");
 
     kprintf("[ELF]  Initializing ELF loader... ");
-    ai_elf_init();
+    elf_init();
     kprintf("OK\n");
 
     kprintf("\n[KERN] Enabling interrupts...\n");
@@ -225,7 +225,7 @@ void init_process(void *arg) {
     
     kprintf("[INIT] Testing ELF loader...\n");
     
-    static uint8_t ai_neural_elf_test[] __aligned(16) = {
+    static uint8_t elf_test_payload[] __aligned(16) = {
         0x7F, 0x45, 0x4C, 0x46, 0x02, 0x01, 0x01, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x02, 0x00,
@@ -268,19 +268,19 @@ void init_process(void *arg) {
         0x20, 0x45, 0x4C, 0x46, 0x21, 0x0A
     };
     
-    AI_ElfValidationResult valid_result = ai_elf_validate(
-        ai_neural_elf_test, sizeof(ai_neural_elf_test));
+    ElfValidationResult valid_result = elf_validate(
+        elf_test_payload, sizeof(elf_test_payload));
     
-    kprintf("[INIT] ELF validation: %s\n", ai_elf_validation_str(valid_result));
+    kprintf("[INIT] ELF validation: %s\n", elf_validation_str(valid_result));
     
-    if (valid_result == AI_ELF_VALIDATION_SUCCESS) {
+    if (valid_result == ELF_VALIDATION_SUCCESS) {
         char *test_argv[] = { "/bin/hello", NULL };
         char *test_envp[] = { "PATH=/bin", "HOME=/home", NULL };
         
-        struct Process *elf_proc = ai_elf_spawn_process(
+        struct Process *elf_proc = elf_spawn_process(
             "hello",
-            ai_neural_elf_test,
-            sizeof(ai_neural_elf_test),
+            elf_test_payload,
+            sizeof(elf_test_payload),
             1,
             test_argv,
             test_envp

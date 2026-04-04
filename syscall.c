@@ -6,47 +6,7 @@
 #include "heap.h"
 #include "pmm.h"
 #include "vmm.h"
-
-#define SYS_READ        0
-#define SYS_WRITE       1
-#define SYS_OPEN        2
-#define SYS_CLOSE       3
-#define SYS_STAT        4
-#define SYS_FSTAT       5
-#define SYS_LSEEK       8
-#define SYS_MMAP        9
-#define SYS_MUNMAP      11
-#define SYS_BRK         12
-#define SYS_IOCTL       16
-#define SYS_GETPID      39
-#define SYS_FORK        57
-#define SYS_EXECVE      59
-#define SYS_EXIT        60
-#define SYS_WAIT4       61
-#define SYS_KILL        62
-#define SYS_UNAME       63
-#define SYS_GETCWD      79
-#define SYS_CHDIR       80
-#define SYS_MKDIR       83
-#define SYS_RMDIR       84
-#define SYS_GETUID      102
-#define SYS_GETGID      104
-#define SYS_SETUID      105
-#define SYS_SETGID      106
-#define SYS_GETEUID     107
-#define SYS_GETEGID     108
-#define SYS_GETPPID     110
-#define SYS_NANOSLEEP   35
-#define SYS_CLOCK_GETTIME 228
-
-struct SyscallArgs {
-    uint64_t arg1;
-    uint64_t arg2;
-    uint64_t arg3;
-    uint64_t arg4;
-    uint64_t arg5;
-    uint64_t arg6;
-};
+#include "syscall.h"
 
 static void strncpy(char *dest, const char *src, size_t n) {
     size_t i;
@@ -126,14 +86,58 @@ static int64_t sys_exit(int code) {
 }
 
 static int64_t sys_fork(void) {
-    return -ENOSYS;
+    return process_fork();
 }
 
 static int64_t sys_execve(const char *path, char *const argv[], char *const envp[]) {
-    (void)path;
-    (void)argv;
-    (void)envp;
-    return -ENOSYS;
+    if (!path) return -EFAULT;
+    return process_execve(path, argv, envp);
+}
+
+static int64_t sys_wait4(pid_t pid, int *status, int options, void *rusage) {
+    (void)options;
+    (void)rusage;
+    return process_wait(pid, status);
+}
+
+static int64_t sys_kill(pid_t pid, int sig) {
+    return process_kill(pid, sig);
+}
+
+static int64_t sys_rt_sigaction(int sig, const struct Sigaction *act,
+                                struct Sigaction *oldact, size_t sigsetsize) {
+    (void)sigsetsize;
+    return process_sigaction(sig, act, oldact);
+}
+
+static int64_t sys_rt_sigprocmask(int how, const uint64_t *set, uint64_t *oldset, size_t sigsetsize) {
+    (void)sigsetsize;
+    struct Process *proc = process_current();
+    if (!proc) return -ESRCH;
+    
+    if (oldset) {
+        *oldset = proc->signal_frame.signal_blocked;
+    }
+    
+    if (set) {
+        switch (how) {
+        case 0:
+            proc->signal_frame.signal_blocked |= *set;
+            break;
+        case 1:
+            proc->signal_frame.signal_blocked &= ~(*set);
+            break;
+        case 2:
+            proc->signal_frame.signal_blocked = *set;
+            break;
+        default:
+            return -EINVAL;
+        }
+        
+        proc->signal_frame.signal_blocked &= ~((1ULL << SIGKILL) | (1ULL << SIGSTOP));
+    }
+    
+    return 0;
 }
 
 static int64_t sys_brk(void *addr) {
@@ -227,6 +231,16 @@ int64_t syscall_handler(uint64_t syscall_num, struct SyscallArgs *args) {
         return sys_close(args->arg1);
     case SYS_BRK:
         return sys_brk((void *)args->arg1);
+    case SYS_RT_SIGACTION:
+        return sys_rt_sigaction(args->arg1, 
+                                (const struct Sigaction *)args->arg2,
+                                (struct Sigaction *)args->arg3,
+                                args->arg4);
+    case SYS_RT_SIGPROCMASK:
+        return sys_rt_sigprocmask(args->arg1,
+                                  (const uint64_t *)args->arg2,
+                                  (uint64_t *)args->arg3,
+                                  args->arg4);
     case SYS_GETPID:
         return sys_getpid();
     case SYS_GETPPID:
@@ -247,6 +261,10 @@ int64_t syscall_handler(uint64_t syscall_num, struct SyscallArgs *args) {
         return sys_execve((const char *)args->arg1, 
                           (char *const *)args->arg2,
                           (char *const *)args->arg3);
+    case SYS_WAIT4:
+        return sys_wait4(args->arg1, (int *)args->arg2, args->arg3, (void *)args->arg4);
+    case SYS_KILL:
+        return sys_kill(args->arg1, args->arg2);
     case SYS_UNAME:
         return sys_uname((struct Utsname *)args->arg1);
     case SYS_NANOSLEEP:

@@ -3,6 +3,9 @@
 
 #include "types.h"
 
+#define KERNEL_HEAP_START  0xFFFFFFFFC0000000
+#define KERNEL_HEAP_SIZE   0x10000000  // 256 MB
+
 void heap_init(void);
 
 void *kmalloc(size_t size);

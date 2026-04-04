@@ -169,27 +169,33 @@
 
 ---
 
-## Phase 12: Process Control [IN PROGRESS]
+## Phase 12: Process Control [DONE]
 ### fork() / execve()
-- [ ] Copy-on-write (COW) page tables
-- [ ] fork() implementation
-- [ ] execve() implementation
-- [ ] vfork() for efficiency
+- [x] Copy-on-write (COW) page tables
+- [x] fork() implementation
+- [x] execve() implementation
+- [x] vfork() (alias to fork)
 - [ ] clone() with flags
 
 ### Signals
-- [ ] Signal numbers (SIGKILL, SIGTERM, SIGSEGV, etc.)
-- [ ] Signal handlers (sigaction)
-- [ ] Signal delivery on return to userspace
-- [ ] Signal masking (sigprocmask)
-- [ ] Default signal actions
+- [x] Signal numbers (SIGKILL, SIGTERM, SIGSEGV, etc.)
+- [x] Signal handlers (sigaction)
+- [x] Signal delivery check
+- [x] Signal masking (sigprocmask)
+- [x] Default signal actions
+- [ ] Full signal delivery on return to userspace
+
+### wait() Family
+- [x] wait4() / waitpid()
+- [x] SIGCHLD on child exit
+- [x] Zombie process reaping
 
 ### Memory Validation
 - [ ] User pointer validation
 - [ ] copy_from_user / copy_to_user
 - [ ] access_ok() checks
 
-## Phase 12: POSIX Compatibility [TODO]
+## Phase 13: POSIX Compatibility [TODO]
 ### Libc Foundation
 - [ ] String functions (strlen, strcpy, strcmp, memcpy, memset)
 - [ ] Memory allocation (malloc, free, realloc, calloc)
@@ -421,7 +427,7 @@
 | Networking | 🔄 PARTIAL | 60% |
 | Ring 3 & Syscalls | ✅ DONE | 100% |
 | ELF Loading | ✅ DONE | 90% |
-| Process Control | 🔄 IN PROGRESS | 20% |
+| Process Control | ✅ DONE | 85% |
 | POSIX | ⬜ TODO | 0% |
 | SMP | ⬜ TODO | 0% |
 | Storage | ⬜ TODO | 0% |

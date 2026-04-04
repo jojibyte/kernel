@@ -78,6 +78,7 @@ iso: $(KERNEL_ELF)
 	mkdir -p $(ISO_DIR)/boot/grub
 	cp $(KERNEL_ELF) $(ISO_DIR)/boot/kernel.elf
 	echo 'menuentry "kernel" {' > $(ISO_DIR)/boot/grub/grub.cfg
+	echo '    set gfxpayload=text' >> $(ISO_DIR)/boot/grub/grub.cfg
 	echo '    multiboot2 /boot/kernel.elf' >> $(ISO_DIR)/boot/grub/grub.cfg
 	echo '}' >> $(ISO_DIR)/boot/grub/grub.cfg
 	grub-mkrescue -o $(ISO_FILE) $(ISO_DIR)

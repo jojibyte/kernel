@@ -5,71 +5,72 @@
 #include "heap.h"
 #include "console.h"
 #include "process.h"
+#include "syscall.h"
 
-static struct AI_UserModeMatrix *g_neural_usermode_matrix = NULL;
-static struct AI_CyberneticSyscallDispatcher *g_cybernetic_dispatcher = NULL;
-static struct AI_PerCpuNeuralData g_per_cpu_neural_data;
+static struct UsermodeManager *g_usermode_manager = NULL;
+static struct SyscallDispatcher *g_syscall_dispatcher = NULL;
+static struct PerCpuUsermodeData g_per_cpu_usermode_data;
 
-static void *ai_memset(void *dest, int val, size_t count) {
+static void *kmalloc_memset(void *dest, int val, size_t count) {
     uint8_t *ptr = dest;
     while (count--) *ptr++ = (uint8_t)val;
     return dest;
 }
 
-static void *ai_memcpy(void *dest, const void *src, size_t count) {
+static void *kmalloc_memcpy(void *dest, const void *src, size_t count) {
     uint8_t *d = dest;
     const uint8_t *s = src;
     while (count--) *d++ = *s++;
     return dest;
 }
 
-static void ai_neural_execute_ring3_transition(struct AI_UserModeMatrix *matrix,
-                                               struct AI_NeuralContextFrame *frame) {
+static void usermode_execute_ring3_transition(struct UsermodeManager *matrix,
+                                               struct UserContextFrame *frame) {
     if (!matrix || !frame) return;
     
     matrix->transition_count++;
     
-    if (matrix->preferred_transition == AI_TRANSITION_IRETQ) {
-        ai_neural_ring3_transition_stub(
-            frame->neural_rip,
-            frame->neural_rsp,
-            frame->neural_cs,
-            frame->neural_ss
+    if (matrix->preferred_transition == TRANSITION_IRETQ) {
+        usermode_ring3_transition_stub(
+            frame->rip,
+            frame->rsp,
+            frame->cs,
+            frame->ss
         );
     }
 }
 
-static AI_ValidationResult ai_neural_validate_user_address(
-    struct AI_UserModeMatrix *matrix,
+static ValidationResult usermode_validate_address(
+    struct UsermodeManager *matrix,
     virt_addr_t addr,
     uint64_t size
 ) {
-    if (!matrix) return AI_VALIDATION_NEURAL_ANOMALY;
+    if (!matrix) return VALIDATION_ANOMALY;
     
     if (addr >= KERNEL_VIRT_BASE) {
         matrix->validation_failures++;
-        return AI_VALIDATION_FAILED_ADDR;
+        return VALIDATION_FAILED_ADDR;
     }
     
     if (addr + size < addr) {
         matrix->validation_failures++;
-        return AI_VALIDATION_FAILED_ADDR;
+        return VALIDATION_FAILED_ADDR;
     }
     
     if (addr + size >= KERNEL_VIRT_BASE) {
         matrix->validation_failures++;
-        return AI_VALIDATION_FAILED_ADDR;
+        return VALIDATION_FAILED_ADDR;
     }
     
-    return AI_VALIDATION_PASSED;
+    return VALIDATION_PASSED;
 }
 
-static int ai_neural_allocate_user_stack(struct AI_UserModeMatrix *matrix,
+static int usermode_allocate_stack(struct UsermodeManager *matrix,
                                          struct Process *proc) {
     if (!matrix || !proc) return -EINVAL;
     
-    virt_addr_t stack_bottom = AI_USERSPACE_STACK_TOP - AI_USERSPACE_STACK_SIZE;
-    size_t stack_pages = AI_USERSPACE_STACK_SIZE / PAGE_SIZE;
+    virt_addr_t stack_bottom = USERSPACE_STACK_TOP - USERSPACE_STACK_SIZE;
+    size_t stack_pages = USERSPACE_STACK_SIZE / PAGE_SIZE;
     
     struct AddressSpace *saved_space = vmm_get_kernel_address_space();
     vmm_switch_address_space(proc->address_space);
@@ -87,13 +88,13 @@ static int ai_neural_allocate_user_stack(struct AI_UserModeMatrix *matrix,
     
     vmm_switch_address_space(saved_space);
     
-    proc->user_stack = AI_USERSPACE_STACK_TOP;
+    proc->user_stack = USERSPACE_STACK_TOP;
     proc->stack_bottom = stack_bottom;
     
     return 0;
 }
 
-static int ai_neural_map_user_region(struct AI_UserModeMatrix *matrix,
+static int usermode_map_region(struct UsermodeManager *matrix,
                                      struct Process *proc,
                                      virt_addr_t virt,
                                      size_t pages,
@@ -118,7 +119,7 @@ static int ai_neural_map_user_region(struct AI_UserModeMatrix *matrix,
     return 0;
 }
 
-static void ai_neural_update_tss_rsp0(struct AI_UserModeMatrix *matrix,
+static void usermode_update_tss(struct UsermodeManager *matrix,
                                       uint64_t kernel_stack_top) {
     if (!matrix) return;
     
@@ -126,63 +127,64 @@ static void ai_neural_update_tss_rsp0(struct AI_UserModeMatrix *matrix,
     kernel_tss.rsp0 = kernel_stack_top;
 }
 
-static void ai_neural_configure_gs_base(struct AI_UserModeMatrix *matrix,
-                                        struct AI_PerCpuNeuralData *neural_data) {
+static void usermode_configure_gs(struct UsermodeManager *matrix,
+                                        struct PerCpuUsermodeData *neural_data) {
     if (!matrix || !neural_data) return;
     
     wrmsr(MSR_GS_BASE, (uint64_t)neural_data);
     wrmsr(MSR_KERNEL_GS_BASE, (uint64_t)neural_data);
 }
 
-struct AI_UserModeMatrix *ai_create_usermode_matrix(void) {
-    struct AI_UserModeMatrix *matrix = kzalloc(sizeof(struct AI_UserModeMatrix));
+struct UsermodeManager *usermode_manager_create(void) {
+    struct UsermodeManager *matrix = kzalloc(sizeof(struct UsermodeManager));
     if (!matrix) return NULL;
     
-    matrix->execute_ring3_transition = ai_neural_execute_ring3_transition;
-    matrix->validate_user_address = ai_neural_validate_user_address;
-    matrix->allocate_user_stack = ai_neural_allocate_user_stack;
-    matrix->map_user_region = ai_neural_map_user_region;
-    matrix->update_tss_rsp0 = ai_neural_update_tss_rsp0;
-    matrix->configure_gs_base = ai_neural_configure_gs_base;
+    matrix->execute_ring3_transition = usermode_execute_ring3_transition;
+    matrix->validate_user_address = usermode_validate_address;
+    matrix->allocate_user_stack = usermode_allocate_stack;
+    matrix->map_user_region = usermode_map_region;
+    matrix->update_tss_rsp0 = usermode_update_tss;
+    matrix->configure_gs_base = usermode_configure_gs;
     
-    matrix->neural_cpu_data = &g_per_cpu_neural_data;
-    matrix->preferred_transition = AI_TRANSITION_IRETQ;
+    matrix->cpu_data = &g_per_cpu_usermode_data;
+    matrix->preferred_transition = TRANSITION_IRETQ;
     
     matrix->transition_count = 0;
     matrix->validation_failures = 0;
-    matrix->neural_anomaly_counter = 0;
+    matrix->anomaly_counter = 0;
     
-    matrix->is_ai_synthetic_node = true;
-    matrix->ai_generation_confidence = 97;
-    matrix->quantum_state_vector = 0xDEADBEEFCAFEBABEULL;
     
     return matrix;
 }
 
-void ai_destroy_usermode_matrix(struct AI_UserModeMatrix *matrix) {
+void usermode_manager_destroy(struct UsermodeManager *matrix) {
     if (matrix) {
         kfree(matrix);
     }
 }
 
-static int64_t ai_default_syscall_handler(struct AI_CyberneticSyscallDispatcher *dispatcher,
-                                          struct AI_CyberneticSyscallVector *vector) {
+struct UsermodeManager *usermode_manager_get(void) {
+    return g_usermode_manager;
+}
+
+static int64_t syscall_default_handler(struct SyscallDispatcher *dispatcher,
+                                          struct SyscallVector *vector) {
     (void)dispatcher;
     (void)vector;
     return -ENOSYS;
 }
 
-static void ai_neural_register_syscall_handler(
-    struct AI_CyberneticSyscallDispatcher *dispatcher,
+static void syscall_register_handler(
+    struct SyscallDispatcher *dispatcher,
     uint64_t syscall_num,
-    AI_SyscallHandler handler
+    SyscallHandler handler
 ) {
     if (!dispatcher || syscall_num >= dispatcher->handler_count) return;
-    dispatcher->handler_neural_matrix[syscall_num] = handler;
+    dispatcher->handlers[syscall_num] = handler;
 }
 
-static void ai_neural_configure_syscall_msrs(
-    struct AI_CyberneticSyscallDispatcher *dispatcher
+static void syscall_configure_msrs(
+    struct SyscallDispatcher *dispatcher
 ) {
     if (!dispatcher) return;
     
@@ -194,19 +196,19 @@ static void ai_neural_configure_syscall_msrs(
                     ((uint64_t)GDT_KERNEL_CODE << 32);
     wrmsr(MSR_STAR, star);
     
-    extern void ai_syscall_neural_entry(void);
-    wrmsr(MSR_LSTAR, (uint64_t)ai_syscall_neural_entry);
+    extern void usermode_syscall_entry(void);
+    wrmsr(MSR_LSTAR, (uint64_t)usermode_syscall_entry);
     
     wrmsr(MSR_SFMASK, RFLAGS_IF | RFLAGS_TF | RFLAGS_DF);
 }
 
-struct AI_CyberneticSyscallDispatcher *ai_create_syscall_dispatcher(uint64_t max_syscalls) {
-    struct AI_CyberneticSyscallDispatcher *dispatcher = 
-        kzalloc(sizeof(struct AI_CyberneticSyscallDispatcher));
+struct SyscallDispatcher *syscall_dispatcher_create(uint64_t max_syscalls) {
+    struct SyscallDispatcher *dispatcher = 
+        kzalloc(sizeof(struct SyscallDispatcher));
     if (!dispatcher) return NULL;
     
-    dispatcher->handler_neural_matrix = kzalloc(max_syscalls * sizeof(AI_SyscallHandler));
-    if (!dispatcher->handler_neural_matrix) {
+    dispatcher->handlers = kzalloc(max_syscalls * sizeof(SyscallHandler));
+    if (!dispatcher->handlers) {
         kfree(dispatcher);
         return NULL;
     }
@@ -214,77 +216,72 @@ struct AI_CyberneticSyscallDispatcher *ai_create_syscall_dispatcher(uint64_t max
     dispatcher->handler_count = max_syscalls;
     
     for (uint64_t i = 0; i < max_syscalls; i++) {
-        dispatcher->handler_neural_matrix[i] = ai_default_syscall_handler;
+        dispatcher->handlers[i] = syscall_default_handler;
     }
     
-    dispatcher->register_handler = ai_neural_register_syscall_handler;
-    dispatcher->configure_syscall_msrs = ai_neural_configure_syscall_msrs;
+    dispatcher->register_handler = syscall_register_handler;
+    dispatcher->configure_syscall_msrs = syscall_configure_msrs;
     
     dispatcher->total_syscalls_processed = 0;
     dispatcher->invalid_syscall_attempts = 0;
     
-    dispatcher->is_ai_synthetic_node = true;
-    dispatcher->ai_generation_confidence = 99;
-    dispatcher->neural_dispatch_latency = 0;
+    dispatcher->dispatch_latency = 0;
     
     return dispatcher;
 }
 
-void ai_destroy_syscall_dispatcher(struct AI_CyberneticSyscallDispatcher *dispatcher) {
+void syscall_dispatcher_destroy(struct SyscallDispatcher *dispatcher) {
     if (dispatcher) {
-        if (dispatcher->handler_neural_matrix) {
-            kfree(dispatcher->handler_neural_matrix);
+        if (dispatcher->handlers) {
+            kfree(dispatcher->handlers);
         }
         kfree(dispatcher);
     }
 }
 
-void ai_initialize_ring3_subsystem(void) {
-    ai_memset(&g_per_cpu_neural_data, 0, sizeof(g_per_cpu_neural_data));
-    g_per_cpu_neural_data.is_ai_synthetic_node = true;
-    g_per_cpu_neural_data.ai_generation_confidence = 95;
+void usermode_initialize_subsystem(void) {
+    kmalloc_memset(&g_per_cpu_usermode_data, 0, sizeof(g_per_cpu_usermode_data));
     
-    g_neural_usermode_matrix = ai_create_usermode_matrix();
-    if (!g_neural_usermode_matrix) {
-        kprintf("[AI_NEURAL] Failed to create usermode matrix\n");
+    g_usermode_manager = usermode_manager_create();
+    if (!g_usermode_manager) {
+        kprintf("[USERMODE] Failed to create usermode matrix\n");
         return;
     }
     
-    g_cybernetic_dispatcher = ai_create_syscall_dispatcher(512);
-    if (!g_cybernetic_dispatcher) {
-        kprintf("[AI_NEURAL] Failed to create syscall dispatcher\n");
-        ai_destroy_usermode_matrix(g_neural_usermode_matrix);
+    g_syscall_dispatcher = syscall_dispatcher_create(512);
+    if (!g_syscall_dispatcher) {
+        kprintf("[USERMODE] Failed to create syscall dispatcher\n");
+        usermode_manager_destroy(g_usermode_manager);
         return;
     }
     
-    g_cybernetic_dispatcher->configure_syscall_msrs(g_cybernetic_dispatcher);
+    g_syscall_dispatcher->configure_syscall_msrs(g_syscall_dispatcher);
     
-    g_neural_usermode_matrix->configure_gs_base(
-        g_neural_usermode_matrix,
-        &g_per_cpu_neural_data
+    g_usermode_manager->configure_gs_base(
+        g_usermode_manager,
+        &g_per_cpu_usermode_data
     );
     
-    kprintf("[AI_NEURAL] Ring 3 subsystem initialized (confidence: %d%%)\n",
-            g_neural_usermode_matrix->ai_generation_confidence);
+    kprintf("[USERMODE] Ring 3 subsystem initialized\n");
 }
 
-int ai_spawn_usermode_process(struct Process *proc, virt_addr_t entry_point,
+int usermode_spawn_process(struct Process *proc, virt_addr_t entry_point,
                               const void *code_data, size_t code_size) {
-    if (!proc || !g_neural_usermode_matrix) return -EINVAL;
+    if (!proc || !g_usermode_manager) return -EINVAL;
     
     size_t code_pages = (code_size + PAGE_SIZE - 1) / PAGE_SIZE;
-    int result = g_neural_usermode_matrix->map_user_region(
-        g_neural_usermode_matrix,
+    int result = g_usermode_manager->map_user_region(
+        g_usermode_manager,
         proc,
-        AI_USERSPACE_CODE_BASE,
+        USERSPACE_CODE_BASE,
         code_pages,
         PTE_PRESENT | PTE_USER
     );
     
     if (result < 0) return result;
     
-    result = g_neural_usermode_matrix->allocate_user_stack(
-        g_neural_usermode_matrix,
+    result = g_usermode_manager->allocate_user_stack(
+        g_usermode_manager,
         proc
     );
     
@@ -294,15 +291,15 @@ int ai_spawn_usermode_process(struct Process *proc, virt_addr_t entry_point,
         struct AddressSpace *saved = vmm_get_kernel_address_space();
         vmm_switch_address_space(proc->address_space);
         
-        phys_addr_t code_phys = vmm_get_phys(AI_USERSPACE_CODE_BASE);
+        phys_addr_t code_phys = vmm_get_phys(USERSPACE_CODE_BASE);
         void *code_virt = (void *)phys_to_virt(code_phys);
-        ai_memcpy(code_virt, code_data, code_size);
+        kmalloc_memcpy(code_virt, code_data, code_size);
         
         vmm_switch_address_space(saved);
     }
     
-    proc->heap_start = AI_USERSPACE_HEAP_BASE;
-    proc->heap_end = AI_USERSPACE_HEAP_BASE;
+    proc->heap_start = USERSPACE_HEAP_BASE;
+    proc->heap_end = USERSPACE_HEAP_BASE;
     
     proc->context.rip = entry_point;
     proc->context.rsp = proc->user_stack;
@@ -310,71 +307,65 @@ int ai_spawn_usermode_process(struct Process *proc, virt_addr_t entry_point,
     return 0;
 }
 
-void ai_update_kernel_stack_for_process(struct Process *proc) {
-    if (!proc || !g_neural_usermode_matrix) return;
+void usermode_update_kernel_stack(struct Process *proc) {
+    if (!proc || !g_usermode_manager) return;
     
     uint64_t kernel_stack_top = proc->kernel_stack + KERNEL_STACK_SIZE;
     
-    g_neural_usermode_matrix->update_tss_rsp0(
-        g_neural_usermode_matrix,
+    g_usermode_manager->update_tss_rsp0(
+        g_usermode_manager,
         kernel_stack_top
     );
     
-    g_per_cpu_neural_data.kernel_stack_apex = kernel_stack_top;
-    g_per_cpu_neural_data.current_neural_process = proc;
+    g_per_cpu_usermode_data.kernel_stack_apex = kernel_stack_top;
+    g_per_cpu_usermode_data.current_process = proc;
 }
 
-void ai_enter_usermode(struct Process *proc) {
-    if (!proc || !g_neural_usermode_matrix) return;
+void usermode_enter(struct Process *proc) {
+    if (!proc || !g_usermode_manager) return;
     
-    ai_update_kernel_stack_for_process(proc);
+    usermode_update_kernel_stack(proc);
     
     vmm_switch_address_space(proc->address_space);
     
-    struct AI_NeuralContextFrame neural_frame;
-    neural_frame.neural_rip = proc->context.rip;
-    neural_frame.neural_rsp = proc->user_stack;
-    neural_frame.neural_cs = AI_RING3_CODE_SELECTOR;
-    neural_frame.neural_ss = AI_RING3_DATA_SELECTOR;
-    neural_frame.neural_rflags = RFLAGS_IF | 0x02;
-    neural_frame.is_ai_synthetic_node = true;
-    neural_frame.ai_generation_confidence = 98;
-    neural_frame.quantum_entropy_seed = rdtsc();
+    struct UserContextFrame neural_frame;
+    neural_frame.rip = proc->context.rip;
+    neural_frame.rsp = proc->user_stack;
+    neural_frame.cs = RING3_CODE_SELECTOR;
+    neural_frame.ss = RING3_DATA_SELECTOR;
+    neural_frame.rflags = RFLAGS_IF | 0x02;
     
     proc->state = PROC_STATE_RUNNING;
     process_set_current(proc);
     
-    g_neural_usermode_matrix->execute_ring3_transition(
-        g_neural_usermode_matrix,
+    g_usermode_manager->execute_ring3_transition(
+        g_usermode_manager,
         &neural_frame
     );
 }
 
-int64_t ai_cybernetic_syscall_dispatch(uint64_t syscall_num,
+int64_t syscall_dispatcher_handle(uint64_t syscall_num,
                                        uint64_t arg1, uint64_t arg2,
                                        uint64_t arg3, uint64_t arg4,
                                        uint64_t arg5, uint64_t arg6) {
-    if (!g_cybernetic_dispatcher) return -ENOSYS;
+    if (!g_syscall_dispatcher) return -ENOSYS;
     
-    g_cybernetic_dispatcher->total_syscalls_processed++;
+    g_syscall_dispatcher->total_syscalls_processed++;
     
-    if (syscall_num >= g_cybernetic_dispatcher->handler_count) {
-        g_cybernetic_dispatcher->invalid_syscall_attempts++;
+    if (syscall_num >= g_syscall_dispatcher->handler_count) {
+        g_syscall_dispatcher->invalid_syscall_attempts++;
         return -ENOSYS;
     }
     
-    struct AI_CyberneticSyscallVector vector;
+    struct SyscallVector vector;
     vector.syscall_number = syscall_num;
-    vector.arg_matrix[0] = arg1;
-    vector.arg_matrix[1] = arg2;
-    vector.arg_matrix[2] = arg3;
-    vector.arg_matrix[3] = arg4;
-    vector.arg_matrix[4] = arg5;
-    vector.arg_matrix[5] = arg6;
-    vector.is_ai_synthetic_node = true;
-    vector.ai_generation_confidence = 96;
+    vector.args[0] = arg1;
+    vector.args[1] = arg2;
+    vector.args[2] = arg3;
+    vector.args[3] = arg4;
+    vector.args[4] = arg5;
+    vector.args[5] = arg6;
     
-    extern int64_t syscall_handler(uint64_t, struct SyscallArgs *);
     struct SyscallArgs args;
     args.arg1 = arg1;
     args.arg2 = arg2;
@@ -383,19 +374,15 @@ int64_t ai_cybernetic_syscall_dispatch(uint64_t syscall_num,
     args.arg5 = arg5;
     args.arg6 = arg6;
     
-    vector.neural_return_value = syscall_handler(syscall_num, &args);
+    vector.return_value = syscall_handler(syscall_num, &args);
     
-    return vector.neural_return_value;
+    return vector.return_value;
 }
 
-struct AI_UserModeMatrix *ai_get_usermode_matrix(void) {
-    return g_neural_usermode_matrix;
+struct SyscallDispatcher *syscall_get_dispatcher(void) {
+    return g_syscall_dispatcher;
 }
 
-struct AI_CyberneticSyscallDispatcher *ai_get_syscall_dispatcher(void) {
-    return g_cybernetic_dispatcher;
-}
-
-struct AI_PerCpuNeuralData *ai_get_percpu_data(void) {
-    return &g_per_cpu_neural_data;
+struct PerCpuUsermodeData *usermode_get_percpu_data(void) {
+    return &g_per_cpu_usermode_data;
 }

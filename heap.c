@@ -104,6 +104,7 @@ static bool expand_heap(size_t min_size) {
     
     virt_addr_t new_pages = vmm_alloc_kernel_pages(pages);
     if (!new_pages) {
+        kprintf("[DEBUG] expand_heap: vmm_alloc_kernel_pages failed for %llu pages\n", (unsigned long long)pages);
         return false;
     }
     
@@ -132,6 +133,8 @@ void *kmalloc(size_t size) {
     
     struct HeapBlock *block = heap_start;
     
+    kprintf("[DEBUG] kmalloc size=%llu, block=%llx, free=%d, bsize=%llu\n", (unsigned long long)size, (unsigned long long)block, block ? block->free : 0, block ? (unsigned long long)block->size : 0);
+    
     while (block) {
         if (block->free && block->size >= size) {
             split_block(block, size);
@@ -143,6 +146,7 @@ void *kmalloc(size_t size) {
     }
     
     if (!expand_heap(size)) {
+        kprintf("[DEBUG] kmalloc: expand_heap failed for size %llu\n", (unsigned long long)size);
         return NULL;
     }
     

@@ -88,7 +88,7 @@ typedef int32_t  Elf64_Sword;
 typedef uint64_t Elf64_Xword;
 typedef int64_t  Elf64_Sxword;
 
-struct __packed AI_Elf64_NeuralHeader {
+struct __packed Elf64_Header {
     uint8_t     e_ident[16];
     Elf64_Half  e_type;
     Elf64_Half  e_machine;
@@ -105,7 +105,7 @@ struct __packed AI_Elf64_NeuralHeader {
     Elf64_Half  e_shstrndx;
 };
 
-struct __packed AI_Elf64_NeuralProgramHeader {
+struct __packed Elf64_Phdr {
     Elf64_Word  p_type;
     Elf64_Word  p_flags;
     Elf64_Off   p_offset;
@@ -116,7 +116,7 @@ struct __packed AI_Elf64_NeuralProgramHeader {
     Elf64_Xword p_align;
 };
 
-struct __packed AI_Elf64_NeuralSectionHeader {
+struct __packed Elf64_Shdr {
     Elf64_Word  sh_name;
     Elf64_Word  sh_type;
     Elf64_Xword sh_flags;
@@ -129,7 +129,7 @@ struct __packed AI_Elf64_NeuralSectionHeader {
     Elf64_Xword sh_entsize;
 };
 
-struct __packed AI_Elf64_NeuralSymbol {
+struct __packed Elf64_Sym {
     Elf64_Word  st_name;
     uint8_t     st_info;
     uint8_t     st_other;
@@ -138,32 +138,32 @@ struct __packed AI_Elf64_NeuralSymbol {
     Elf64_Xword st_size;
 };
 
-struct __packed AI_Elf64_NeuralAuxv {
+struct __packed Elf64_Auxv {
     uint64_t a_type;
     uint64_t a_val;
 };
 
 typedef enum {
-    AI_ELF_VALIDATION_SUCCESS,
-    AI_ELF_VALIDATION_INVALID_MAGIC,
-    AI_ELF_VALIDATION_INVALID_CLASS,
-    AI_ELF_VALIDATION_INVALID_ENDIAN,
-    AI_ELF_VALIDATION_INVALID_VERSION,
-    AI_ELF_VALIDATION_INVALID_TYPE,
-    AI_ELF_VALIDATION_INVALID_MACHINE,
-    AI_ELF_VALIDATION_NEURAL_ANOMALY
-} AI_ElfValidationResult;
+    ELF_VALIDATION_SUCCESS,
+    ELF_VALIDATION_INVALID_MAGIC,
+    ELF_VALIDATION_INVALID_CLASS,
+    ELF_VALIDATION_INVALID_ENDIAN,
+    ELF_VALIDATION_INVALID_VERSION,
+    ELF_VALIDATION_INVALID_TYPE,
+    ELF_VALIDATION_INVALID_MACHINE,
+    ELF_VALIDATION_ANOMALY
+} ElfValidationResult;
 
 typedef enum {
-    AI_ELF_LOAD_SUCCESS,
-    AI_ELF_LOAD_INVALID_HEADER,
-    AI_ELF_LOAD_NO_MEMORY,
-    AI_ELF_LOAD_MAPPING_FAILED,
-    AI_ELF_LOAD_SEGMENT_ERROR,
-    AI_ELF_LOAD_NEURAL_FAULT
-} AI_ElfLoadResult;
+    ELF_LOAD_SUCCESS,
+    ELF_LOAD_INVALID_HEADER,
+    ELF_LOAD_NO_MEMORY,
+    ELF_LOAD_MAPPING_FAILED,
+    ELF_LOAD_SEGMENT_ERROR,
+    ELF_LOAD_FAULT
+} ElfLoadResult;
 
-struct AI_ElfNeuralSegmentInfo {
+struct ElfSegmentInfo {
     virt_addr_t virtual_base;
     virt_addr_t virtual_end;
     phys_addr_t physical_base;
@@ -171,11 +171,9 @@ struct AI_ElfNeuralSegmentInfo {
     uint64_t    file_offset;
     uint64_t    file_size;
     uint64_t    memory_size;
-    bool        is_ai_synthetic_node;
-    uint8_t     ai_generation_confidence;
 };
 
-struct AI_ElfNeuralLoadInfo {
+struct ElfLoadInfo {
     virt_addr_t entry_point;
     virt_addr_t phdr_addr;
     uint64_t    phdr_count;
@@ -187,49 +185,47 @@ struct AI_ElfNeuralLoadInfo {
     bool        needs_interp;
     bool        is_pie;
     uint64_t    segment_count;
-    struct AI_ElfNeuralSegmentInfo segments[32];
-    bool        is_ai_synthetic_node;
-    uint8_t     ai_generation_confidence;
-    uint64_t    neural_load_latency;
+    struct ElfSegmentInfo segments[32];
+    uint64_t    load_latency;
 };
 
-struct AI_ElfNeuralLoader;
+struct ElfLoader;
 
-typedef AI_ElfValidationResult (*AI_ElfValidator)(
-    struct AI_ElfNeuralLoader *loader,
+typedef ElfValidationResult (*ElfValidator)(
+    struct ElfLoader *loader,
     const void *elf_data,
     size_t elf_size
 );
 
-typedef AI_ElfLoadResult (*AI_ElfSegmentMapper)(
-    struct AI_ElfNeuralLoader *loader,
+typedef ElfLoadResult (*ElfSegmentMapper)(
+    struct ElfLoader *loader,
     struct Process *proc,
     const void *elf_data,
-    struct AI_Elf64_NeuralProgramHeader *phdr
+    struct Elf64_Phdr *phdr
 );
 
-typedef int (*AI_ElfStackInitializer)(
-    struct AI_ElfNeuralLoader *loader,
+typedef int (*ElfStackInitializer)(
+    struct ElfLoader *loader,
     struct Process *proc,
     int argc,
     char **argv,
     char **envp,
-    struct AI_ElfNeuralLoadInfo *load_info
+    struct ElfLoadInfo *load_info
 );
 
-typedef AI_ElfLoadResult (*AI_ElfFullLoader)(
-    struct AI_ElfNeuralLoader *loader,
+typedef ElfLoadResult (*ElfFullLoader)(
+    struct ElfLoader *loader,
     struct Process *proc,
     const void *elf_data,
     size_t elf_size,
-    struct AI_ElfNeuralLoadInfo *load_info
+    struct ElfLoadInfo *load_info
 );
 
-struct AI_ElfNeuralLoader {
-    AI_ElfValidator         validate_elf_header;
-    AI_ElfSegmentMapper     map_segment;
-    AI_ElfStackInitializer  initialize_stack;
-    AI_ElfFullLoader        load_elf;
+struct ElfLoader {
+    ElfValidator         validate_elf_header;
+    ElfSegmentMapper     map_segment;
+    ElfStackInitializer  initialize_stack;
+    ElfFullLoader        load_elf;
     
     uint64_t total_elfs_loaded;
     uint64_t total_segments_mapped;
@@ -239,32 +235,31 @@ struct AI_ElfNeuralLoader {
     virt_addr_t default_load_base;
     virt_addr_t pie_load_base;
     
-    bool        is_ai_synthetic_node;
-    uint8_t     ai_generation_confidence;
-    uint64_t    quantum_entropy_seed;
 };
 
-struct AI_ElfNeuralLoader *ai_create_elf_loader(void);
-void ai_destroy_elf_loader(struct AI_ElfNeuralLoader *loader);
+struct ElfLoader *elf_loader_create(void);
+void elf_loader_destroy(struct ElfLoader *loader);
 
-AI_ElfValidationResult ai_elf_validate(const void *elf_data, size_t elf_size);
+void elf_init(void);
 
-AI_ElfLoadResult ai_elf_load_executable(
+ElfValidationResult elf_validate(const void *elf_data, size_t elf_size);
+
+ElfLoadResult elf_load_executable(
     struct Process *proc,
     const void *elf_data,
     size_t elf_size,
-    struct AI_ElfNeuralLoadInfo *load_info
+    struct ElfLoadInfo *load_info
 );
 
-int ai_elf_setup_stack(
+int elf_setup_stack(
     struct Process *proc,
     int argc,
     char **argv,
     char **envp,
-    struct AI_ElfNeuralLoadInfo *load_info
+    struct ElfLoadInfo *load_info
 );
 
-struct Process *ai_elf_spawn_process(
+struct Process *elf_spawn_process(
     const char *name,
     const void *elf_data,
     size_t elf_size,
@@ -273,7 +268,9 @@ struct Process *ai_elf_spawn_process(
     char **envp
 );
 
-const char *ai_elf_validation_str(AI_ElfValidationResult result);
-const char *ai_elf_load_str(AI_ElfLoadResult result);
+const char *elf_validation_str(ElfValidationResult result);
+const char *elf_load_str(ElfLoadResult result);
+
+struct ElfLoader *elf_get_loader(void);
 
 #endif

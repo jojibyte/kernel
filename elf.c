@@ -4,9 +4,8 @@
 #include "heap.h"
 #include "console.h"
 #include "usermode.h"
-#include "x86_64.h"
 
-static struct AI_ElfNeuralLoader *g_neural_elf_loader = NULL;
+static struct ElfLoader *g_elf_loader = NULL;
 
 static void *ai_elf_memcpy(void *dest, const void *src, size_t n) {
     uint8_t *d = dest;
@@ -33,49 +32,49 @@ static char *ai_elf_strcpy(char *dest, const char *src) {
     return dest;
 }
 
-static AI_ElfValidationResult ai_neural_validate_elf_header(
-    struct AI_ElfNeuralLoader *loader,
+static ElfValidationResult ai_neural_validate_elf_header(
+    struct ElfLoader *loader,
     const void *elf_data,
     size_t elf_size
 ) {
-    if (!loader || !elf_data || elf_size < sizeof(struct AI_Elf64_NeuralHeader)) {
-        return AI_ELF_VALIDATION_NEURAL_ANOMALY;
+    if (!loader || !elf_data || elf_size < sizeof(struct Elf64_Header)) {
+        return ELF_VALIDATION_ANOMALY;
     }
     
-    const struct AI_Elf64_NeuralHeader *ehdr = elf_data;
+    const struct Elf64_Header *ehdr = elf_data;
     
     uint32_t magic = *(uint32_t *)ehdr->e_ident;
     if (magic != ELF_MAGIC) {
         loader->validation_failures++;
-        return AI_ELF_VALIDATION_INVALID_MAGIC;
+        return ELF_VALIDATION_INVALID_MAGIC;
     }
     
     if (ehdr->e_ident[4] != ELF_CLASS_64) {
         loader->validation_failures++;
-        return AI_ELF_VALIDATION_INVALID_CLASS;
+        return ELF_VALIDATION_INVALID_CLASS;
     }
     
     if (ehdr->e_ident[5] != ELF_DATA_LSB) {
         loader->validation_failures++;
-        return AI_ELF_VALIDATION_INVALID_ENDIAN;
+        return ELF_VALIDATION_INVALID_ENDIAN;
     }
     
     if (ehdr->e_ident[6] != ELF_VERSION_CURRENT) {
         loader->validation_failures++;
-        return AI_ELF_VALIDATION_INVALID_VERSION;
+        return ELF_VALIDATION_INVALID_VERSION;
     }
     
     if (ehdr->e_type != ELF_TYPE_EXEC && ehdr->e_type != ELF_TYPE_DYN) {
         loader->validation_failures++;
-        return AI_ELF_VALIDATION_INVALID_TYPE;
+        return ELF_VALIDATION_INVALID_TYPE;
     }
     
     if (ehdr->e_machine != ELF_MACHINE_X86_64) {
         loader->validation_failures++;
-        return AI_ELF_VALIDATION_INVALID_MACHINE;
+        return ELF_VALIDATION_INVALID_MACHINE;
     }
     
-    return AI_ELF_VALIDATION_SUCCESS;
+    return ELF_VALIDATION_SUCCESS;
 }
 
 static uint64_t ai_elf_flags_to_page_flags(uint32_t p_flags) {
@@ -92,18 +91,18 @@ static uint64_t ai_elf_flags_to_page_flags(uint32_t p_flags) {
     return flags;
 }
 
-static AI_ElfLoadResult ai_neural_map_segment(
-    struct AI_ElfNeuralLoader *loader,
+static ElfLoadResult ai_neural_map_segment(
+    struct ElfLoader *loader,
     struct Process *proc,
     const void *elf_data,
-    struct AI_Elf64_NeuralProgramHeader *phdr
+    struct Elf64_Phdr *phdr
 ) {
     if (!loader || !proc || !elf_data || !phdr) {
-        return AI_ELF_LOAD_NEURAL_FAULT;
+        return ELF_LOAD_FAULT;
     }
     
     if (phdr->p_type != PT_LOAD) {
-        return AI_ELF_LOAD_SUCCESS;
+        return ELF_LOAD_SUCCESS;
     }
     
     virt_addr_t vaddr_start = ALIGN_DOWN(phdr->p_vaddr, PAGE_SIZE);
@@ -123,7 +122,7 @@ static AI_ElfLoadResult ai_neural_map_segment(
             if (!phys_frame) {
                 vmm_switch_address_space(saved_as);
                 loader->mapping_failures++;
-                return AI_ELF_LOAD_NO_MEMORY;
+                return ELF_LOAD_NO_MEMORY;
             }
             
             vmm_map_page(page_vaddr, phys_frame, page_flags | PTE_WRITABLE);
@@ -170,16 +169,16 @@ static AI_ElfLoadResult ai_neural_map_segment(
     vmm_switch_address_space(saved_as);
     loader->total_segments_mapped++;
     
-    return AI_ELF_LOAD_SUCCESS;
+    return ELF_LOAD_SUCCESS;
 }
 
 static int ai_neural_initialize_stack(
-    struct AI_ElfNeuralLoader *loader,
+    struct ElfLoader *loader,
     struct Process *proc,
     int argc,
     char **argv,
     char **envp,
-    struct AI_ElfNeuralLoadInfo *load_info
+    struct ElfLoadInfo *load_info
 ) {
     if (!loader || !proc || !load_info) {
         return -EINVAL;
@@ -194,7 +193,7 @@ static int ai_neural_initialize_stack(
     sp -= 16;
     sp = ALIGN_DOWN(sp, 16);
     
-    struct AI_Elf64_NeuralAuxv auxv[] = {
+    struct Elf64_Auxv auxv[] = {
         { AT_PHDR,   load_info->phdr_addr },
         { AT_PHENT,  load_info->phdr_size },
         { AT_PHNUM,  load_info->phdr_count },
@@ -208,7 +207,7 @@ static int ai_neural_initialize_stack(
     };
     
     size_t auxv_count = sizeof(auxv) / sizeof(auxv[0]);
-    sp -= auxv_count * sizeof(struct AI_Elf64_NeuralAuxv);
+    sp -= auxv_count * sizeof(struct Elf64_Auxv);
     sp = ALIGN_DOWN(sp, 8);
     virt_addr_t auxv_start = sp;
     
@@ -299,10 +298,10 @@ static int ai_neural_initialize_stack(
     *envp_null_ptr = 0;
     
     for (size_t i = 0; i < auxv_count; i++) {
-        virt_addr_t auxv_entry_addr = auxv_start + (i * sizeof(struct AI_Elf64_NeuralAuxv));
+        virt_addr_t auxv_entry_addr = auxv_start + (i * sizeof(struct Elf64_Auxv));
         phys_addr_t auxv_phys = vmm_get_phys(ALIGN_DOWN(auxv_entry_addr, PAGE_SIZE));
-        struct AI_Elf64_NeuralAuxv *auxv_ptr = 
-            (struct AI_Elf64_NeuralAuxv *)(phys_to_virt(auxv_phys) + (auxv_entry_addr & (PAGE_SIZE - 1)));
+        struct Elf64_Auxv *auxv_ptr = 
+            (struct Elf64_Auxv *)(phys_to_virt(auxv_phys) + (auxv_entry_addr & (PAGE_SIZE - 1)));
         *auxv_ptr = auxv[i];
     }
     
@@ -314,31 +313,29 @@ static int ai_neural_initialize_stack(
     return 0;
 }
 
-static AI_ElfLoadResult ai_neural_load_elf_full(
-    struct AI_ElfNeuralLoader *loader,
+static ElfLoadResult ai_neural_load_elf_full(
+    struct ElfLoader *loader,
     struct Process *proc,
     const void *elf_data,
     size_t elf_size,
-    struct AI_ElfNeuralLoadInfo *load_info
+    struct ElfLoadInfo *load_info
 ) {
     if (!loader || !proc || !elf_data || !load_info) {
-        return AI_ELF_LOAD_NEURAL_FAULT;
+        return ELF_LOAD_FAULT;
     }
     
-    AI_ElfValidationResult validation = loader->validate_elf_header(loader, elf_data, elf_size);
-    if (validation != AI_ELF_VALIDATION_SUCCESS) {
-        return AI_ELF_LOAD_INVALID_HEADER;
+    ElfValidationResult validation = loader->validate_elf_header(loader, elf_data, elf_size);
+    if (validation != ELF_VALIDATION_SUCCESS) {
+        return ELF_LOAD_INVALID_HEADER;
     }
     
-    const struct AI_Elf64_NeuralHeader *ehdr = elf_data;
+    const struct Elf64_Header *ehdr = elf_data;
     
     ai_elf_memset(load_info, 0, sizeof(*load_info));
     load_info->entry_point = ehdr->e_entry;
     load_info->phdr_count = ehdr->e_phnum;
     load_info->phdr_size = ehdr->e_phentsize;
     load_info->is_pie = (ehdr->e_type == ELF_TYPE_DYN);
-    load_info->is_ai_synthetic_node = true;
-    load_info->ai_generation_confidence = 94;
     
     if (load_info->is_pie) {
         load_info->base_address = loader->pie_load_base;
@@ -347,14 +344,14 @@ static AI_ElfLoadResult ai_neural_load_elf_full(
         load_info->base_address = 0;
     }
     
-    const struct AI_Elf64_NeuralProgramHeader *phdr_table = 
-        (const struct AI_Elf64_NeuralProgramHeader *)((const uint8_t *)elf_data + ehdr->e_phoff);
+    const struct Elf64_Phdr *phdr_table = 
+        (const struct Elf64_Phdr *)((const uint8_t *)elf_data + ehdr->e_phoff);
     
-    virt_addr_t min_addr = UINT64_MAX;
+    virt_addr_t min_addr = ~0ULL;
     virt_addr_t max_addr = 0;
     
     for (uint16_t i = 0; i < ehdr->e_phnum; i++) {
-        const struct AI_Elf64_NeuralProgramHeader *phdr = &phdr_table[i];
+        const struct Elf64_Phdr *phdr = &phdr_table[i];
         
         if (phdr->p_type == PT_INTERP) {
             load_info->needs_interp = true;
@@ -377,27 +374,25 @@ static AI_ElfLoadResult ai_neural_load_elf_full(
     }
     
     for (uint16_t i = 0; i < ehdr->e_phnum; i++) {
-        struct AI_Elf64_NeuralProgramHeader phdr_copy = phdr_table[i];
+        struct Elf64_Phdr phdr_copy = phdr_table[i];
         
         if (load_info->is_pie && phdr_copy.p_type == PT_LOAD) {
             phdr_copy.p_vaddr += load_info->base_address;
         }
         
-        AI_ElfLoadResult seg_result = loader->map_segment(loader, proc, elf_data, &phdr_copy);
-        if (seg_result != AI_ELF_LOAD_SUCCESS) {
+        ElfLoadResult seg_result = loader->map_segment(loader, proc, elf_data, &phdr_copy);
+        if (seg_result != ELF_LOAD_SUCCESS) {
             return seg_result;
         }
         
         if (phdr_copy.p_type == PT_LOAD && load_info->segment_count < 32) {
-            struct AI_ElfNeuralSegmentInfo *seg = &load_info->segments[load_info->segment_count++];
+            struct ElfSegmentInfo *seg = &load_info->segments[load_info->segment_count++];
             seg->virtual_base = phdr_copy.p_vaddr;
             seg->virtual_end = phdr_copy.p_vaddr + phdr_copy.p_memsz;
             seg->flags = phdr_copy.p_flags;
             seg->file_offset = phdr_copy.p_offset;
             seg->file_size = phdr_copy.p_filesz;
             seg->memory_size = phdr_copy.p_memsz;
-            seg->is_ai_synthetic_node = true;
-            seg->ai_generation_confidence = 92;
         }
         
         if (phdr_copy.p_type == PT_PHDR) {
@@ -416,11 +411,11 @@ static AI_ElfLoadResult ai_neural_load_elf_full(
     
     loader->total_elfs_loaded++;
     
-    return AI_ELF_LOAD_SUCCESS;
+    return ELF_LOAD_SUCCESS;
 }
 
-struct AI_ElfNeuralLoader *ai_create_elf_loader(void) {
-    struct AI_ElfNeuralLoader *loader = kzalloc(sizeof(struct AI_ElfNeuralLoader));
+struct ElfLoader *elf_loader_create(void) {
+    struct ElfLoader *loader = kzalloc(sizeof(struct ElfLoader));
     if (!loader) return NULL;
     
     loader->validate_elf_header = ai_neural_validate_elf_header;
@@ -436,60 +431,56 @@ struct AI_ElfNeuralLoader *ai_create_elf_loader(void) {
     loader->validation_failures = 0;
     loader->mapping_failures = 0;
     
-    loader->is_ai_synthetic_node = true;
-    loader->ai_generation_confidence = 96;
-    loader->quantum_entropy_seed = 0xCAFEBABEDEADBEEFULL;
     
     return loader;
 }
 
-void ai_destroy_elf_loader(struct AI_ElfNeuralLoader *loader) {
+void elf_loader_destroy(struct ElfLoader *loader) {
     if (loader) {
         kfree(loader);
     }
 }
 
-void ai_elf_init(void) {
-    g_neural_elf_loader = ai_create_elf_loader();
-    if (g_neural_elf_loader) {
-        kprintf("[AI_ELF] Neural ELF loader initialized (confidence: %d%%)\n",
-                g_neural_elf_loader->ai_generation_confidence);
+void elf_init(void) {
+    g_elf_loader = elf_loader_create();
+    if (g_elf_loader) {
+        kprintf("[ELF] ELF loader initialized\n");
     }
 }
 
-AI_ElfValidationResult ai_elf_validate(const void *elf_data, size_t elf_size) {
-    if (!g_neural_elf_loader) {
-        return AI_ELF_VALIDATION_NEURAL_ANOMALY;
+ElfValidationResult elf_validate(const void *elf_data, size_t elf_size) {
+    if (!g_elf_loader) {
+        return ELF_VALIDATION_ANOMALY;
     }
-    return g_neural_elf_loader->validate_elf_header(g_neural_elf_loader, elf_data, elf_size);
+    return g_elf_loader->validate_elf_header(g_elf_loader, elf_data, elf_size);
 }
 
-AI_ElfLoadResult ai_elf_load_executable(
+ElfLoadResult elf_load_executable(
     struct Process *proc,
     const void *elf_data,
     size_t elf_size,
-    struct AI_ElfNeuralLoadInfo *load_info
+    struct ElfLoadInfo *load_info
 ) {
-    if (!g_neural_elf_loader) {
-        return AI_ELF_LOAD_NEURAL_FAULT;
+    if (!g_elf_loader) {
+        return ELF_LOAD_FAULT;
     }
-    return g_neural_elf_loader->load_elf(g_neural_elf_loader, proc, elf_data, elf_size, load_info);
+    return g_elf_loader->load_elf(g_elf_loader, proc, elf_data, elf_size, load_info);
 }
 
-int ai_elf_setup_stack(
+int elf_setup_stack(
     struct Process *proc,
     int argc,
     char **argv,
     char **envp,
-    struct AI_ElfNeuralLoadInfo *load_info
+    struct ElfLoadInfo *load_info
 ) {
-    if (!g_neural_elf_loader) {
+    if (!g_elf_loader) {
         return -ENOSYS;
     }
-    return g_neural_elf_loader->initialize_stack(g_neural_elf_loader, proc, argc, argv, envp, load_info);
+    return g_elf_loader->initialize_stack(g_elf_loader, proc, argc, argv, envp, load_info);
 }
 
-struct Process *ai_elf_spawn_process(
+struct Process *elf_spawn_process(
     const char *name,
     const void *elf_data,
     size_t elf_size,
@@ -497,7 +488,7 @@ struct Process *ai_elf_spawn_process(
     char **argv,
     char **envp
 ) {
-    if (!g_neural_elf_loader || !elf_data) {
+    if (!g_elf_loader || !elf_data) {
         return NULL;
     }
     
@@ -506,22 +497,22 @@ struct Process *ai_elf_spawn_process(
         return NULL;
     }
     
-    int stack_result = ai_get_usermode_matrix()->allocate_user_stack(
-        ai_get_usermode_matrix(), proc);
+    int stack_result = usermode_manager_get()->allocate_user_stack(
+        usermode_manager_get(), proc);
     if (stack_result < 0) {
         process_destroy(proc);
         return NULL;
     }
     
-    struct AI_ElfNeuralLoadInfo load_info;
-    AI_ElfLoadResult load_result = ai_elf_load_executable(proc, elf_data, elf_size, &load_info);
-    if (load_result != AI_ELF_LOAD_SUCCESS) {
-        kprintf("[AI_ELF] Load failed: %s\n", ai_elf_load_str(load_result));
+    struct ElfLoadInfo load_info;
+    ElfLoadResult load_result = elf_load_executable(proc, elf_data, elf_size, &load_info);
+    if (load_result != ELF_LOAD_SUCCESS) {
+        kprintf("[AI_ELF] Load failed: %s\n", elf_load_str(load_result));
         process_destroy(proc);
         return NULL;
     }
     
-    int setup_result = ai_elf_setup_stack(proc, argc, argv, envp, &load_info);
+    int setup_result = elf_setup_stack(proc, argc, argv, envp, &load_info);
     if (setup_result < 0) {
         process_destroy(proc);
         return NULL;
@@ -529,7 +520,7 @@ struct Process *ai_elf_spawn_process(
     
     proc->context.rip = load_info.entry_point;
     
-    kprintf("[AI_ELF] Process '%s' loaded: entry=0x%llx, brk=0x%llx\n",
+    kprintf("[ELF] Process '%s' loaded: entry=0x%llx, brk=0x%llx\n",
             name,
             (unsigned long long)load_info.entry_point,
             (unsigned long long)load_info.brk_start);
@@ -537,32 +528,32 @@ struct Process *ai_elf_spawn_process(
     return proc;
 }
 
-const char *ai_elf_validation_str(AI_ElfValidationResult result) {
+const char *elf_validation_str(ElfValidationResult result) {
     switch (result) {
-    case AI_ELF_VALIDATION_SUCCESS:         return "Success";
-    case AI_ELF_VALIDATION_INVALID_MAGIC:   return "Invalid magic";
-    case AI_ELF_VALIDATION_INVALID_CLASS:   return "Invalid class (not 64-bit)";
-    case AI_ELF_VALIDATION_INVALID_ENDIAN:  return "Invalid endianness";
-    case AI_ELF_VALIDATION_INVALID_VERSION: return "Invalid version";
-    case AI_ELF_VALIDATION_INVALID_TYPE:    return "Invalid type";
-    case AI_ELF_VALIDATION_INVALID_MACHINE: return "Invalid machine (not x86-64)";
-    case AI_ELF_VALIDATION_NEURAL_ANOMALY:  return "Neural anomaly";
+    case ELF_VALIDATION_SUCCESS:         return "Success";
+    case ELF_VALIDATION_INVALID_MAGIC:   return "Invalid magic";
+    case ELF_VALIDATION_INVALID_CLASS:   return "Invalid class (not 64-bit)";
+    case ELF_VALIDATION_INVALID_ENDIAN:  return "Invalid endianness";
+    case ELF_VALIDATION_INVALID_VERSION: return "Invalid version";
+    case ELF_VALIDATION_INVALID_TYPE:    return "Invalid type";
+    case ELF_VALIDATION_INVALID_MACHINE: return "Invalid machine (not x86-64)";
+    case ELF_VALIDATION_ANOMALY:  return "Neural anomaly";
     default:                                return "Unknown error";
     }
 }
 
-const char *ai_elf_load_str(AI_ElfLoadResult result) {
+const char *elf_load_str(ElfLoadResult result) {
     switch (result) {
-    case AI_ELF_LOAD_SUCCESS:        return "Success";
-    case AI_ELF_LOAD_INVALID_HEADER: return "Invalid ELF header";
-    case AI_ELF_LOAD_NO_MEMORY:      return "Out of memory";
-    case AI_ELF_LOAD_MAPPING_FAILED: return "Mapping failed";
-    case AI_ELF_LOAD_SEGMENT_ERROR:  return "Segment error";
-    case AI_ELF_LOAD_NEURAL_FAULT:   return "Neural fault";
+    case ELF_LOAD_SUCCESS:        return "Success";
+    case ELF_LOAD_INVALID_HEADER: return "Invalid ELF header";
+    case ELF_LOAD_NO_MEMORY:      return "Out of memory";
+    case ELF_LOAD_MAPPING_FAILED: return "Mapping failed";
+    case ELF_LOAD_SEGMENT_ERROR:  return "Segment error";
+    case ELF_LOAD_FAULT:   return "Neural fault";
     default:                         return "Unknown error";
     }
 }
 
-struct AI_ElfNeuralLoader *ai_get_elf_loader(void) {
-    return g_neural_elf_loader;
+struct ElfLoader *elf_get_loader(void) {
+    return g_elf_loader;
 }

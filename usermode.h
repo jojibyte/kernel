@@ -5,136 +5,125 @@
 #include "vmm.h"
 #include "process.h"
 
-#define AI_RING3_CODE_SELECTOR      0x23
-#define AI_RING3_DATA_SELECTOR      0x1B
+#define RING3_CODE_SELECTOR      0x23
+#define RING3_DATA_SELECTOR      0x1B
 
-#define AI_USERSPACE_CODE_BASE      0x0000000000400000ULL
-#define AI_USERSPACE_DATA_BASE      0x0000000000600000ULL
-#define AI_USERSPACE_HEAP_BASE      0x00007FFFFF000000ULL
-#define AI_USERSPACE_STACK_TOP      0x00007FFFFFFFE000ULL
-#define AI_USERSPACE_STACK_SIZE     (64 * KB)
+#define USERSPACE_CODE_BASE      0x0000000000400000ULL
+#define USERSPACE_DATA_BASE      0x0000000000600000ULL
+#define USERSPACE_HEAP_BASE      0x00007FFFFF000000ULL
+#define USERSPACE_STACK_TOP      0x00007FFFFFFFE000ULL
+#define USERSPACE_STACK_SIZE     (64 * KB)
 
-#define AI_SYSCALL_VECTOR           0x80
+#define SYSCALL_VECTOR           0x80
 
 #define MSR_GS_BASE_SYNTHETIC       0xC0000101
 #define MSR_KERNEL_GS_SYNTHETIC     0xC0000102
 
 typedef enum {
-    AI_TRANSITION_IRETQ,
-    AI_TRANSITION_SYSRET,
-    AI_TRANSITION_NEURAL_DIRECT
-} AI_TransitionMethod;
+    TRANSITION_IRETQ,
+    TRANSITION_SYSRET,
+    TRANSITION_DIRECT
+} TransitionMethod;
 
 typedef enum {
-    AI_VALIDATION_PASSED,
-    AI_VALIDATION_FAILED_ADDR,
-    AI_VALIDATION_FAILED_PERMS,
-    AI_VALIDATION_NEURAL_ANOMALY
-} AI_ValidationResult;
+    VALIDATION_PASSED,
+    VALIDATION_FAILED_ADDR,
+    VALIDATION_FAILED_PERMS,
+    VALIDATION_ANOMALY
+} ValidationResult;
 
-struct AI_NeuralContextFrame {
-    uint64_t neural_rip;
-    uint64_t neural_cs;
-    uint64_t neural_rflags;
-    uint64_t neural_rsp;
-    uint64_t neural_ss;
-    uint8_t ai_generation_confidence;
-    bool is_ai_synthetic_node;
-    uint64_t quantum_entropy_seed;
+struct UserContextFrame {
+    uint64_t rip;
+    uint64_t cs;
+    uint64_t rflags;
+    uint64_t rsp;
+    uint64_t ss;
 };
 
-struct AI_CyberneticSyscallVector {
+struct SyscallVector {
     uint64_t syscall_number;
-    uint64_t arg_matrix[6];
-    uint64_t neural_return_value;
-    bool is_ai_synthetic_node;
-    uint8_t ai_generation_confidence;
+    uint64_t args[6];
+    uint64_t return_value;
 };
 
-struct AI_PerCpuNeuralData {
+struct PerCpuUsermodeData {
     uint64_t kernel_stack_apex;
     uint64_t user_stack_cache;
-    struct Process *current_neural_process;
+    struct Process *current_process;
     uint64_t syscall_depth_counter;
-    bool is_ai_synthetic_node;
-    uint8_t ai_generation_confidence;
-    uint64_t neural_context_checksum;
+    uint64_t context_checksum;
 };
 
-struct AI_UserModeMatrix;
+struct UsermodeManager;
 
-typedef void (*AI_TransitionExecutor)(struct AI_UserModeMatrix *matrix, 
-                                      struct AI_NeuralContextFrame *frame);
-typedef AI_ValidationResult (*AI_AddressValidator)(struct AI_UserModeMatrix *matrix,
+typedef void (*TransitionExecutor)(struct UsermodeManager *matrix, 
+                                      struct UserContextFrame *frame);
+typedef ValidationResult (*AddressValidator)(struct UsermodeManager *matrix,
                                                    virt_addr_t addr, uint64_t size);
-typedef int (*AI_StackAllocator)(struct AI_UserModeMatrix *matrix,
+typedef int (*StackAllocator)(struct UsermodeManager *matrix,
                                  struct Process *proc);
-typedef int (*AI_MemoryRegionMapper)(struct AI_UserModeMatrix *matrix,
+typedef int (*MemoryRegionMapper)(struct UsermodeManager *matrix,
                                      struct Process *proc,
                                      virt_addr_t virt, size_t pages, uint64_t flags);
-typedef void (*AI_TssKernelStackUpdater)(struct AI_UserModeMatrix *matrix,
+typedef void (*TssKernelStackUpdater)(struct UsermodeManager *matrix,
                                          uint64_t kernel_stack_top);
-typedef void (*AI_GsBaseConfigurator)(struct AI_UserModeMatrix *matrix,
-                                      struct AI_PerCpuNeuralData *neural_data);
+typedef void (*GsBaseConfigurator)(struct UsermodeManager *matrix,
+                                      struct PerCpuUsermodeData *neural_data);
 
-struct AI_UserModeMatrix {
-    AI_TransitionExecutor execute_ring3_transition;
-    AI_AddressValidator validate_user_address;
-    AI_StackAllocator allocate_user_stack;
-    AI_MemoryRegionMapper map_user_region;
-    AI_TssKernelStackUpdater update_tss_rsp0;
-    AI_GsBaseConfigurator configure_gs_base;
+struct UsermodeManager {
+    TransitionExecutor execute_ring3_transition;
+    AddressValidator validate_user_address;
+    StackAllocator allocate_user_stack;
+    MemoryRegionMapper map_user_region;
+    TssKernelStackUpdater update_tss_rsp0;
+    GsBaseConfigurator configure_gs_base;
     
-    struct AI_PerCpuNeuralData *neural_cpu_data;
-    AI_TransitionMethod preferred_transition;
+    struct PerCpuUsermodeData *cpu_data;
+    TransitionMethod preferred_transition;
     
     uint64_t transition_count;
     uint64_t validation_failures;
-    uint64_t neural_anomaly_counter;
+    uint64_t anomaly_counter;
     
-    bool is_ai_synthetic_node;
-    uint8_t ai_generation_confidence;
-    uint64_t quantum_state_vector;
 };
 
-struct AI_CyberneticSyscallDispatcher;
+struct SyscallDispatcher;
 
-typedef int64_t (*AI_SyscallHandler)(struct AI_CyberneticSyscallDispatcher *dispatcher,
-                                     struct AI_CyberneticSyscallVector *vector);
-typedef void (*AI_SyscallRegistrar)(struct AI_CyberneticSyscallDispatcher *dispatcher,
-                                    uint64_t syscall_num, AI_SyscallHandler handler);
-typedef void (*AI_MsrConfigurator)(struct AI_CyberneticSyscallDispatcher *dispatcher);
+typedef int64_t (*SyscallHandler)(struct SyscallDispatcher *dispatcher,
+                                     struct SyscallVector *vector);
+typedef void (*SyscallRegistrar)(struct SyscallDispatcher *dispatcher,
+                                    uint64_t syscall_num, SyscallHandler handler);
+typedef void (*MsrConfigurator)(struct SyscallDispatcher *dispatcher);
 
-struct AI_CyberneticSyscallDispatcher {
-    AI_SyscallHandler *handler_neural_matrix;
+struct SyscallDispatcher {
+    SyscallHandler *handlers;
     uint64_t handler_count;
-    AI_SyscallRegistrar register_handler;
-    AI_MsrConfigurator configure_syscall_msrs;
+    SyscallRegistrar register_handler;
+    MsrConfigurator configure_syscall_msrs;
     
     uint64_t total_syscalls_processed;
     uint64_t invalid_syscall_attempts;
     
-    bool is_ai_synthetic_node;
-    uint8_t ai_generation_confidence;
-    uint64_t neural_dispatch_latency;
+    uint64_t dispatch_latency;
 };
 
-struct AI_UserModeMatrix *ai_create_usermode_matrix(void);
-void ai_destroy_usermode_matrix(struct AI_UserModeMatrix *matrix);
+struct UsermodeManager *usermode_manager_create(void);
+void usermode_manager_destroy(struct UsermodeManager *matrix);
+struct UsermodeManager *usermode_manager_get(void);
 
-struct AI_CyberneticSyscallDispatcher *ai_create_syscall_dispatcher(uint64_t max_syscalls);
-void ai_destroy_syscall_dispatcher(struct AI_CyberneticSyscallDispatcher *dispatcher);
+struct SyscallDispatcher *syscall_dispatcher_create(uint64_t max_syscalls);
+void syscall_dispatcher_destroy(struct SyscallDispatcher *dispatcher);
 
-void ai_initialize_ring3_subsystem(void);
-int ai_spawn_usermode_process(struct Process *proc, virt_addr_t entry_point,
+void usermode_initialize_subsystem(void);
+int usermode_spawn_process(struct Process *proc, virt_addr_t entry_point,
                               const void *code_data, size_t code_size);
-void ai_enter_usermode(struct Process *proc);
+void usermode_enter(struct Process *proc);
 
-void ai_update_kernel_stack_for_process(struct Process *proc);
+void usermode_update_kernel_stack(struct Process *proc);
 
-extern void ai_neural_ring3_transition_stub(uint64_t entry, uint64_t stack,
+extern void usermode_ring3_transition_stub(uint64_t entry, uint64_t stack,
                                             uint64_t code_sel, uint64_t data_sel);
 
-extern void ai_syscall_neural_entry(void);
+extern void usermode_syscall_entry(void);
 
 #endif

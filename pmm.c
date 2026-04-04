@@ -1,8 +1,9 @@
 #include "pmm.h"
-#include "multiboot2.h"
 #include "console.h"
+#include "multiboot2.h"
 
 static uint64_t *page_bitmap;
+static struct Page *page_array;
 static uint64_t bitmap_size;
 static uint64_t total_pages;
 static uint64_t free_pages;
@@ -65,12 +66,11 @@ void pmm_init(void) {
         struct Multiboot2MmapEntry *entry = 
             (void *)((uint8_t *)boot_info.mmap_entries + i * boot_info.mmap_entry_size);
         
-        phys_addr_t end = entry->addr + entry->len;
-        if (end > max_addr) {
-            max_addr = end;
-        }
-        
         if (entry->type == MULTIBOOT2_MEMORY_AVAILABLE) {
+            phys_addr_t end = entry->addr + entry->len;
+            if (end > max_addr) {
+                max_addr = end;
+            }
             total_memory += entry->len;
         }
     }
@@ -79,9 +79,17 @@ void pmm_init(void) {
     bitmap_size = (total_pages + 63) / 64;
     
     page_bitmap = (uint64_t *)ALIGN_UP((uint64_t)__kernel_end, PAGE_SIZE);
+    page_array = (struct Page *)ALIGN_UP((uint64_t)page_bitmap + bitmap_size * 8, PAGE_SIZE);
     
     for (uint64_t i = 0; i < bitmap_size; i++) {
         page_bitmap[i] = ~0ULL;
+    }
+    
+    for (uint64_t i = 0; i < total_pages; i++) {
+        page_array[i].flags = 0;
+        page_array[i].ref_count = 0;
+        page_array[i].order = 0;
+        page_array[i].next = NULL;
     }
     
     free_pages = 0;
@@ -104,8 +112,11 @@ void pmm_init(void) {
         }
     }
     
-    pmm_reserve_range((phys_addr_t)__kernel_start, 
-                      (phys_addr_t)page_bitmap + bitmap_size * 8);
+    phys_addr_t kernel_phys_start = (uint64_t)__kernel_start;
+    phys_addr_t kernel_phys_end = (uint64_t)page_array + total_pages * sizeof(struct Page);
+    
+    kprintf("[DEBUG] pmm_init reserving %llx - %llx\n", (unsigned long long)kernel_phys_start, (unsigned long long)kernel_phys_end);
+    pmm_reserve_range(kernel_phys_start, kernel_phys_end);
     
     pmm_reserve_range(0, 0x100000);
 }
@@ -119,6 +130,8 @@ phys_addr_t pmm_alloc_page(void) {
     
     bitmap_set(page);
     free_pages--;
+    
+    page_array[page].ref_count = 1;
     
     return page * PAGE_SIZE;
 }
@@ -135,6 +148,7 @@ phys_addr_t pmm_alloc_pages(size_t count) {
     
     for (size_t i = 0; i < count; i++) {
         bitmap_set(start + i);
+        page_array[start + i].ref_count = 1;
     }
     free_pages -= count;
     
@@ -180,4 +194,10 @@ uint64_t pmm_get_total_memory(void) {
 
 uint64_t pmm_get_used_memory(void) {
     return (total_pages - free_pages) * PAGE_SIZE;
+}
+
+struct Page *pmm_get_page(phys_addr_t addr) {
+    uint64_t page = addr / PAGE_SIZE;
+    if (page >= total_pages) return NULL;
+    return &page_array[page];
 }

@@ -164,7 +164,7 @@ void vmm_map_kernel_page(virt_addr_t virt, phys_addr_t phys, uint64_t flags) {
     vmm_map_page(virt, phys, flags | PTE_GLOBAL);
 }
 
-static virt_addr_t kernel_heap_end = KERNEL_VIRT_BASE + 0x10000000;
+static virt_addr_t kernel_heap_end = 0xFFFFFFFFC0000000ULL;
 
 virt_addr_t vmm_alloc_kernel_pages(size_t count) {
     virt_addr_t virt = kernel_heap_end;
@@ -172,6 +172,7 @@ virt_addr_t vmm_alloc_kernel_pages(size_t count) {
     for (size_t i = 0; i < count; i++) {
         phys_addr_t phys = pmm_alloc_page();
         if (!phys) {
+            kprintf("[DEBUG] vmm_alloc_kernel_pages: pmm_alloc_page failed at index %llu\n", (unsigned long long)i);
             for (size_t j = 0; j < i; j++) {
                 vmm_unmap_page(virt + j * PAGE_SIZE);
             }

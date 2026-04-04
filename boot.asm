@@ -6,13 +6,6 @@ header_start:
     dd header_end - header_start
     dd -(0xE85250D6 + 0 + (header_end - header_start))
 
-    align 8
-    dw 5
-    dw 0
-    dd 20
-    dd 1024
-    dd 768
-    dd 32
 
     align 8
     dw 0
@@ -20,14 +13,14 @@ header_start:
     dd 8
 header_end:
 
-section .page_tables
+section .page_tables nobits
 align 4096
 pml4_table:     resb 4096
 pdpt_table:     resb 4096
 pd_table:       resb 4096
 pdpt_table_hh:  resb 4096
 
-section .early_stack
+section .early_stack nobits
 align 16
 early_stack_bottom: resb 4096
 stack_top_low:
@@ -365,11 +358,11 @@ syscall_entry:
     mov rsp, [gs:8]
     swapgs
 
-    sysretq
+    o64 sysret
 
-global ai_syscall_neural_entry
-extern ai_cybernetic_syscall_dispatch
-ai_syscall_neural_entry:
+global usermode_syscall_entry
+extern syscall_dispatcher_handle
+usermode_syscall_entry:
     swapgs
     mov [gs:8], rsp
     mov rsp, [gs:0]
@@ -394,7 +387,7 @@ ai_syscall_neural_entry:
     mov r9,  [rsp + 32]
     push qword [rsp + 40]
 
-    call ai_cybernetic_syscall_dispatch
+    call syscall_dispatcher_handle
 
     add rsp, 8
 
@@ -407,10 +400,10 @@ ai_syscall_neural_entry:
     mov rsp, [gs:8]
     swapgs
 
-    sysretq
+    o64 sysret
 
-global ai_neural_ring3_transition_stub
-ai_neural_ring3_transition_stub:
+global usermode_ring3_transition_stub
+usermode_ring3_transition_stub:
     cli
 
     mov ax, 0x1B
@@ -427,8 +420,8 @@ ai_neural_ring3_transition_stub:
 
     iretq
 
-global ai_neural_return_from_usermode
-ai_neural_return_from_usermode:
+global usermode_return_stub
+usermode_return_stub:
     mov rax, rdi
     ret
 
