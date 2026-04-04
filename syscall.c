@@ -46,6 +46,7 @@ static int64_t sys_read(int fd, void *buf, size_t count) {
 }
 
 static int64_t sys_open(const char *path, int flags, mode_t mode) {
+    if (strnlen_user(path, VFS_MAX_PATH) == 0) return -EFAULT;
     (void)path;
     (void)flags;
     (void)mode;
@@ -97,7 +98,26 @@ static int64_t sys_fork(void) {
 }
 
 static int64_t sys_execve(const char *path, char *const argv[], char *const envp[]) {
-    if (!access_ok(path, 1)) return -EFAULT;
+    if (strnlen_user(path, VFS_MAX_PATH) == 0) return -EFAULT;
+
+    if (argv) {
+        if (!access_ok(argv, sizeof(char *))) return -EFAULT;
+        for (int i = 0; ; i++) {
+            if (!access_ok(&argv[i], sizeof(char *))) return -EFAULT;
+            if (argv[i] == NULL) break;
+            if (strnlen_user(argv[i], VFS_MAX_PATH) == 0) return -EFAULT;
+        }
+    }
+
+    if (envp) {
+        if (!access_ok(envp, sizeof(char *))) return -EFAULT;
+        for (int i = 0; ; i++) {
+            if (!access_ok(&envp[i], sizeof(char *))) return -EFAULT;
+            if (envp[i] == NULL) break;
+            if (strnlen_user(envp[i], VFS_MAX_PATH) == 0) return -EFAULT;
+        }
+    }
+
     return process_execve(path, argv, envp);
 }
 
@@ -134,6 +154,8 @@ static int64_t sys_clone(uint64_t flags, void *child_stack,
 }
 
 static int64_t sys_wait4(pid_t pid, int *status, int options, void *rusage) {
+    if (status && !access_ok(status, sizeof(int))) return -EFAULT;
+    if (rusage && !access_ok(rusage, 1)) return -EFAULT;
     (void)options;
     (void)rusage;
     return process_wait(pid, status);
@@ -145,11 +167,15 @@ static int64_t sys_kill(pid_t pid, int sig) {
 
 static int64_t sys_rt_sigaction(int sig, const struct Sigaction *act,
                                 struct Sigaction *oldact, size_t sigsetsize) {
+    if (act && !access_ok(act, sizeof(struct Sigaction))) return -EFAULT;
+    if (oldact && !access_ok(oldact, sizeof(struct Sigaction))) return -EFAULT;
     (void)sigsetsize;
     return process_sigaction(sig, act, oldact);
 }
 
 static int64_t sys_rt_sigprocmask(int how, const uint64_t *set, uint64_t *oldset, size_t sigsetsize) {
+    if (set && !access_ok(set, sizeof(uint64_t))) return -EFAULT;
+    if (oldset && !access_ok(oldset, sizeof(uint64_t))) return -EFAULT;
     (void)sigsetsize;
     struct Process *proc = process_current();
     if (!proc) return -ESRCH;
@@ -219,7 +245,7 @@ struct Utsname {
 };
 
 static int64_t sys_uname(struct Utsname *buf) {
-    if (!buf) return -EFAULT;
+    if (!buf || !access_ok(buf, sizeof(struct Utsname))) return -EFAULT;
     
     strncpy(buf->sysname, "kernel", 65);
     strncpy(buf->nodename, "localhost", 65);
@@ -236,7 +262,8 @@ struct Timespec {
 };
 
 static int64_t sys_nanosleep(const struct Timespec *req, struct Timespec *rem) {
-    if (!req) return -EFAULT;
+    if (!req || !access_ok(req, sizeof(struct Timespec))) return -EFAULT;
+    if (rem && !access_ok(rem, sizeof(struct Timespec))) return -EFAULT;
     
     uint64_t ms = req->tv_sec * 1000 + req->tv_nsec / 1000000;
     process_sleep(ms);
@@ -250,10 +277,12 @@ static int64_t sys_nanosleep(const struct Timespec *req, struct Timespec *rem) {
 }
 
 static int64_t sys_mkdir(const char *path, mode_t mode) {
+    if (strnlen_user(path, VFS_MAX_PATH) == 0) return -EFAULT;
     return vfs_mkdir(path, mode);
 }
 
 static int64_t sys_chdir(const char *path) {
+    if (strnlen_user(path, VFS_MAX_PATH) == 0) return -EFAULT;
     (void)path;
     return -ENOSYS;
 }
