@@ -1,5 +1,6 @@
 #include "types.h"
 #include "net.h"
+#include "uaccess.h"
 #include "heap.h"
 #include "console.h"
 #include "process.h"
@@ -67,6 +68,7 @@ int sys_socket(int domain, int type, int protocol) {
 }
 
 int sys_bind(int sockfd, const struct SockaddrIn *addr) {
+    if (!access_ok(addr, sizeof(struct SockaddrIn))) return -EFAULT;
     int idx = sockfd - 256;
     if (idx < 0 || idx >= SOCKET_MAX) return -EBADF;
 
@@ -86,6 +88,8 @@ int sys_bind(int sockfd, const struct SockaddrIn *addr) {
 
 int sys_sendto(int sockfd, const void *buf, size_t len,
                int flags, const struct SockaddrIn *dest_addr) {
+    if (!access_ok(buf, len)) return -EFAULT;
+    if (!access_ok(dest_addr, sizeof(struct SockaddrIn))) return -EFAULT;
     (void)flags;
 
     int idx = sockfd - 256;
@@ -106,6 +110,8 @@ int sys_sendto(int sockfd, const void *buf, size_t len,
 
 int sys_recvfrom(int sockfd, void *buf, size_t len,
                  int flags, struct SockaddrIn *src_addr) {
+    if (!access_ok(buf, len)) return -EFAULT;
+    if (src_addr && !access_ok(src_addr, sizeof(struct SockaddrIn))) return -EFAULT;
     (void)flags;
 
     int idx = sockfd - 256;
