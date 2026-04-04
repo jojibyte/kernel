@@ -1,6 +1,6 @@
 # kernel
 
-minimal x86-64 kernel
+x86-64 kernel
 
 ## wsl setup
 
