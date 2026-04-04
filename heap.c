@@ -2,6 +2,7 @@
 #include "vmm.h"
 #include "pmm.h"
 #include "console.h"
+#include "kstring.h"
 
 struct HeapBlock {
     size_t size;
@@ -19,12 +20,6 @@ static size_t heap_size;
 static size_t heap_used;
 
 #define INITIAL_HEAP_SIZE (1 * MB)
-
-static void *memset(void *s, int c, size_t n) {
-    uint8_t *p = s;
-    while (n--) *p++ = c;
-    return s;
-}
 
 void heap_init(void) {
     size_t pages = INITIAL_HEAP_SIZE / PAGE_SIZE;
@@ -152,7 +147,7 @@ void *kmalloc(size_t size) {
 void *kzalloc(size_t size) {
     void *ptr = kmalloc(size);
     if (ptr) {
-        memset(ptr, 0, size);
+        kmemset(ptr, 0, size);
     }
     return ptr;
 }
@@ -192,11 +187,7 @@ void *krealloc(void *ptr, size_t size) {
     void *new_ptr = kmalloc(size);
     if (!new_ptr) return NULL;
     
-    uint8_t *src = ptr;
-    uint8_t *dst = new_ptr;
-    for (size_t i = 0; i < old_size; i++) {
-        dst[i] = src[i];
-    }
+    kmemcpy(new_ptr, ptr, old_size);
     
     kfree(ptr);
     return new_ptr;

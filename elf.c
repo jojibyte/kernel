@@ -4,33 +4,9 @@
 #include "heap.h"
 #include "console.h"
 #include "usermode.h"
+#include "kstring.h"
 
 static struct ElfLoader *g_elf_loader = NULL;
-
-static void *ai_elf_memcpy(void *dest, const void *src, size_t n) {
-    uint8_t *d = dest;
-    const uint8_t *s = src;
-    while (n--) *d++ = *s++;
-    return dest;
-}
-
-static void *ai_elf_memset(void *dest, int val, size_t n) {
-    uint8_t *d = dest;
-    while (n--) *d++ = (uint8_t)val;
-    return dest;
-}
-
-static size_t ai_elf_strlen(const char *s) {
-    size_t len = 0;
-    while (*s++) len++;
-    return len;
-}
-
-static char *ai_elf_strcpy(char *dest, const char *src) {
-    char *d = dest;
-    while ((*d++ = *src++));
-    return dest;
-}
 
 static ElfValidationResult ai_neural_validate_elf_header(
     struct ElfLoader *loader,
@@ -128,7 +104,7 @@ static ElfLoadResult ai_neural_map_segment(
             vmm_map_page(page_vaddr, phys_frame, page_flags | PTE_WRITABLE);
             
             void *page_ptr = (void *)phys_to_virt(phys_frame);
-            ai_elf_memset(page_ptr, 0, PAGE_SIZE);
+            kmemset(page_ptr, 0, PAGE_SIZE);
         }
     }
     
@@ -150,7 +126,7 @@ static ElfLoadResult ai_neural_map_segment(
                 copy_size = bytes_remaining;
             }
             
-            ai_elf_memcpy((uint8_t *)page_ptr + copy_start, src + src_offset, copy_size);
+            kmemcpy((uint8_t *)page_ptr + copy_start, src + src_offset, copy_size);
             
             src_offset += copy_size;
             bytes_remaining -= copy_size;
@@ -227,10 +203,10 @@ static int ai_neural_initialize_stack(
     
     size_t strings_size = 0;
     for (int i = 0; i < argc && argv && argv[i]; i++) {
-        strings_size += ai_elf_strlen(argv[i]) + 1;
+        strings_size += kstrlen(argv[i]) + 1;
     }
     for (int i = 0; i < envc && envp && envp[i]; i++) {
-        strings_size += ai_elf_strlen(envp[i]) + 1;
+        strings_size += kstrlen(envp[i]) + 1;
     }
     
     sp -= strings_size;
@@ -249,7 +225,7 @@ static int ai_neural_initialize_stack(
                 return -ENOMEM;
             }
             vmm_map_page(addr, phys, PTE_PRESENT | PTE_WRITABLE | PTE_USER);
-            ai_elf_memset((void *)phys_to_virt(phys), 0, PAGE_SIZE);
+            kmemset((void *)phys_to_virt(phys), 0, PAGE_SIZE);
         }
     }
     
@@ -258,11 +234,11 @@ static int ai_neural_initialize_stack(
     *argc_ptr = argc;
     
     for (int i = 0; i < argc && argv && argv[i]; i++) {
-        size_t len = ai_elf_strlen(argv[i]) + 1;
+        size_t len = kstrlen(argv[i]) + 1;
         
         phys_addr_t str_phys = vmm_get_phys(ALIGN_DOWN(current_string, PAGE_SIZE));
         char *str_ptr = (char *)(phys_to_virt(str_phys) + (current_string & (PAGE_SIZE - 1)));
-        ai_elf_strcpy(str_ptr, argv[i]);
+        kstrcpy(str_ptr, argv[i]);
         
         virt_addr_t argv_entry_addr = argv_start + (i * sizeof(uint64_t));
         phys_addr_t argv_phys = vmm_get_phys(ALIGN_DOWN(argv_entry_addr, PAGE_SIZE));
@@ -278,11 +254,11 @@ static int ai_neural_initialize_stack(
     *argv_null_ptr = 0;
     
     for (int i = 0; i < envc && envp && envp[i]; i++) {
-        size_t len = ai_elf_strlen(envp[i]) + 1;
+        size_t len = kstrlen(envp[i]) + 1;
         
         phys_addr_t str_phys = vmm_get_phys(ALIGN_DOWN(current_string, PAGE_SIZE));
         char *str_ptr = (char *)(phys_to_virt(str_phys) + (current_string & (PAGE_SIZE - 1)));
-        ai_elf_strcpy(str_ptr, envp[i]);
+        kstrcpy(str_ptr, envp[i]);
         
         virt_addr_t envp_entry_addr = envp_start + (i * sizeof(uint64_t));
         phys_addr_t envp_phys = vmm_get_phys(ALIGN_DOWN(envp_entry_addr, PAGE_SIZE));
@@ -331,7 +307,7 @@ static ElfLoadResult ai_neural_load_elf_full(
     
     const struct Elf64_Header *ehdr = elf_data;
     
-    ai_elf_memset(load_info, 0, sizeof(*load_info));
+    kmemset(load_info, 0, sizeof(*load_info));
     load_info->entry_point = ehdr->e_entry;
     load_info->phdr_count = ehdr->e_phnum;
     load_info->phdr_size = ehdr->e_phentsize;
@@ -360,7 +336,7 @@ static ElfLoadResult ai_neural_load_elf_full(
             if (interp_len > sizeof(load_info->interp_path) - 1) {
                 interp_len = sizeof(load_info->interp_path) - 1;
             }
-            ai_elf_memcpy(load_info->interp_path, interp, interp_len);
+            kmemcpy(load_info->interp_path, interp, interp_len);
             load_info->interp_path[interp_len] = '\0';
         }
         

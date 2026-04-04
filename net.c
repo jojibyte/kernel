@@ -1,6 +1,7 @@
 #include "net.h"
 #include "heap.h"
 #include "console.h"
+#include "kstring.h"
 
 static struct NetInterface *interfaces = NULL;
 
@@ -17,29 +18,6 @@ static struct {
     uint64_t request_time;
     bool pending;
 } arp_pending[16];
-
-static void *memcpy(void *dest, const void *src, size_t n) {
-    uint8_t *d = dest;
-    const uint8_t *s = src;
-    while (n--) *d++ = *s++;
-    return dest;
-}
-
-static void *memset(void *s, int c, size_t n) {
-    uint8_t *p = s;
-    while (n--) *p++ = c;
-    return s;
-}
-
-static int memcmp(const void *s1, const void *s2, size_t n) {
-    const uint8_t *p1 = s1, *p2 = s2;
-    while (n--) {
-        if (*p1 != *p2) return *p1 - *p2;
-        p1++;
-        p2++;
-    }
-    return 0;
-}
 
 uint16_t htons(uint16_t val) {
     return (val >> 8) | (val << 8);
@@ -81,12 +59,12 @@ uint16_t ip_checksum(const void *data, size_t len) {
 }
 
 void net_init(void) {
-    memset(arp_cache, 0, sizeof(arp_cache));
-    memset(arp_pending, 0, sizeof(arp_pending));
+    kmemset(arp_cache, 0, sizeof(arp_cache));
+    kmemset(arp_pending, 0, sizeof(arp_pending));
     
     struct NetInterface *lo = kzalloc(sizeof(struct NetInterface));
     if (lo) {
-        memcpy(lo->name, "lo", 3);
+        kmemcpy(lo->name, "lo", 3);
         lo->ip.addr = IP4(127, 0, 0, 1);
         lo->netmask.addr = IP4(255, 0, 0, 0);
         lo->up = true;
@@ -162,17 +140,17 @@ int net_send_packet(struct NetInterface *iface, const void *data, size_t len) {
 void arp_receive(struct NetInterface *iface, struct ArpHeader *arp) {
     uint16_t op = ntohs(arp->operation);
     
-    if (memcmp(arp->target_ip, &iface->ip.bytes, 4) != 0) {
+    if (kmemcmp(arp->target_ip, &iface->ip.bytes, 4) != 0) {
         return;
     }
     
     struct Ipv4Addr sender_ip;
-    memcpy(&sender_ip.bytes, arp->sender_ip, 4);
+    kmemcpy(&sender_ip.bytes, arp->sender_ip, 4);
     
     for (int i = 0; i < ARP_CACHE_SIZE; i++) {
         if (!arp_cache[i].valid) {
             arp_cache[i].ip = sender_ip;
-            memcpy(arp_cache[i].mac, arp->sender_hw, ETH_ALEN);
+            kmemcpy(arp_cache[i].mac, arp->sender_hw, ETH_ALEN);
             arp_cache[i].valid = true;
             break;
         }
@@ -183,8 +161,8 @@ void arp_receive(struct NetInterface *iface, struct ArpHeader *arp) {
         struct EthHeader *eth = (struct EthHeader *)reply;
         struct ArpHeader *arp_reply = (struct ArpHeader *)(reply + sizeof(struct EthHeader));
         
-        memcpy(eth->dest, arp->sender_hw, ETH_ALEN);
-        memcpy(eth->src, iface->mac, ETH_ALEN);
+        kmemcpy(eth->dest, arp->sender_hw, ETH_ALEN);
+        kmemcpy(eth->src, iface->mac, ETH_ALEN);
         eth->type = htons(ETH_TYPE_ARP);
         
         arp_reply->hw_type = htons(1);
@@ -192,10 +170,10 @@ void arp_receive(struct NetInterface *iface, struct ArpHeader *arp) {
         arp_reply->hw_len = ETH_ALEN;
         arp_reply->proto_len = 4;
         arp_reply->operation = htons(2);
-        memcpy(arp_reply->sender_hw, iface->mac, ETH_ALEN);
-        memcpy(arp_reply->sender_ip, &iface->ip.bytes, 4);
-        memcpy(arp_reply->target_hw, arp->sender_hw, ETH_ALEN);
-        memcpy(arp_reply->target_ip, arp->sender_ip, 4);
+        kmemcpy(arp_reply->sender_hw, iface->mac, ETH_ALEN);
+        kmemcpy(arp_reply->sender_ip, &iface->ip.bytes, 4);
+        kmemcpy(arp_reply->target_hw, arp->sender_hw, ETH_ALEN);
+        kmemcpy(arp_reply->target_ip, arp->sender_ip, 4);
         
         net_send_packet(iface, reply, sizeof(reply));
     }
@@ -204,7 +182,7 @@ void arp_receive(struct NetInterface *iface, struct ArpHeader *arp) {
 int arp_resolve(struct Ipv4Addr ip, uint8_t *mac) {
     for (int i = 0; i < ARP_CACHE_SIZE; i++) {
         if (arp_cache[i].valid && arp_cache[i].ip.addr == ip.addr) {
-            memcpy(mac, arp_cache[i].mac, ETH_ALEN);
+            kmemcpy(mac, arp_cache[i].mac, ETH_ALEN);
             return 0;
         }
     }
@@ -234,11 +212,11 @@ void icmp_receive(struct IpHeader *ip, void *data, size_t len) {
         src_ip.addr = ip->src_addr;
         
         if (arp_resolve(src_ip, dest_mac) < 0) {
-            memset(dest_mac, 0xFF, ETH_ALEN);
+            kmemset(dest_mac, 0xFF, ETH_ALEN);
         }
         
-        memcpy(eth->dest, dest_mac, ETH_ALEN);
-        memcpy(eth->src, iface->mac, ETH_ALEN);
+        kmemcpy(eth->dest, dest_mac, ETH_ALEN);
+        kmemcpy(eth->src, iface->mac, ETH_ALEN);
         eth->type = htons(ETH_TYPE_IP);
         
         ip_reply->version_ihl = 0x45;
@@ -253,7 +231,7 @@ void icmp_receive(struct IpHeader *ip, void *data, size_t len) {
         ip_reply->dest_addr = ip->src_addr;
         ip_reply->checksum = ip_checksum(ip_reply, sizeof(struct IpHeader));
         
-        memcpy(icmp_reply, data, len);
+        kmemcpy(icmp_reply, data, len);
         icmp_reply->type = ICMP_ECHO_REPLY;
         icmp_reply->checksum = 0;
         icmp_reply->checksum = ip_checksum(icmp_reply, len);
@@ -283,11 +261,11 @@ int ip_send(struct Ipv4Addr dest, uint8_t protocol, const void *data, size_t len
 
     uint8_t dest_mac[ETH_ALEN];
     if (arp_resolve(dest, dest_mac) < 0) {
-        memset(eth->dest, 0xFF, ETH_ALEN);
+        kmemset(eth->dest, 0xFF, ETH_ALEN);
     } else {
-        memcpy(eth->dest, dest_mac, ETH_ALEN);
+        kmemcpy(eth->dest, dest_mac, ETH_ALEN);
     }
-    memcpy(eth->src, iface->mac, ETH_ALEN);
+    kmemcpy(eth->src, iface->mac, ETH_ALEN);
     eth->type = htons(ETH_TYPE_IP);
 
     ip->version_ihl = 0x45;
@@ -302,7 +280,7 @@ int ip_send(struct Ipv4Addr dest, uint8_t protocol, const void *data, size_t len
     ip->dest_addr = dest.addr;
     ip->checksum = ip_checksum(ip, sizeof(struct IpHeader));
 
-    memcpy(payload, data, len);
+    kmemcpy(payload, data, len);
 
     int ret = net_send_packet(iface, packet, packet_len);
     kfree(packet);
@@ -323,8 +301,8 @@ int icmp_send_echo_request(struct Ipv4Addr dest, uint16_t id, uint16_t seq) {
     struct IpHeader *ip = (struct IpHeader *)(packet + sizeof(struct EthHeader));
     struct IcmpHeader *icmp = (struct IcmpHeader *)(packet + sizeof(struct EthHeader) + sizeof(struct IpHeader));
     
-    memset(eth->dest, 0xFF, ETH_ALEN);
-    memcpy(eth->src, iface->mac, ETH_ALEN);
+    kmemset(eth->dest, 0xFF, ETH_ALEN);
+    kmemcpy(eth->src, iface->mac, ETH_ALEN);
     eth->type = htons(ETH_TYPE_IP);
     
     ip->version_ihl = 0x45;

@@ -1,22 +1,10 @@
 #include "types.h"
 #include "vmm.h"
 #include "process.h"
+#include "kstring.h"
 
 #define USER_SPACE_START    0x1000ULL
 #define USER_SPACE_END      0x00007FFFFFFFFFFFULL
-
-static void *memcpy(void *dest, const void *src, size_t n) {
-    uint8_t *d = dest;
-    const uint8_t *s = src;
-    while (n--) *d++ = *s++;
-    return dest;
-}
-
-static void *memset(void *s, int c, size_t n) {
-    uint8_t *p = s;
-    while (n--) *p++ = c;
-    return s;
-}
 
 bool access_ok(const void *addr, size_t size) {
     uintptr_t start = (uintptr_t)addr;
@@ -64,7 +52,7 @@ int copy_from_user(void *kernel_dst, const void *user_src, size_t size) {
             return -EFAULT;
     }
 
-    memcpy(kernel_dst, user_src, size);
+    kmemcpy(kernel_dst, user_src, size);
     return 0;
 }
 
@@ -83,7 +71,7 @@ int copy_to_user(void *user_dst, const void *kernel_src, size_t size) {
             return -EFAULT;
     }
 
-    memcpy(user_dst, kernel_src, size);
+    kmemcpy(user_dst, kernel_src, size);
     return 0;
 }
 
@@ -140,6 +128,6 @@ int clear_user(void *user_dst, size_t size) {
             return -EFAULT;
     }
 
-    memset(user_dst, 0, size);
+    kmemset(user_dst, 0, size);
     return 0;
 }

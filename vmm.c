@@ -2,6 +2,7 @@
 #include "pmm.h"
 #include "x86_64.h"
 #include "console.h"
+#include "kstring.h"
 
 typedef uint64_t pte_t;
 
@@ -9,19 +10,6 @@ typedef uint64_t pte_t;
 
 static phys_addr_t kernel_pml4;
 static struct AddressSpace kernel_as;
-
-static void *memset(void *s, int c, size_t n) {
-    uint8_t *p = s;
-    while (n--) *p++ = c;
-    return s;
-}
-
-static void *memcpy(void *dest, const void *src, size_t n) {
-    uint8_t *d = dest;
-    const uint8_t *s = src;
-    while (n--) *d++ = *s++;
-    return dest;
-}
 
 static pte_t *get_pte(virt_addr_t virt, bool create) {
     pte_t *pml4 = (pte_t *)kernel_pml4;
@@ -34,7 +22,7 @@ static pte_t *get_pte(virt_addr_t virt, bool create) {
         if (!create) return NULL;
         phys_addr_t pdpt = pmm_alloc_page();
         if (!pdpt) return NULL;
-        memset((void *)pdpt, 0, PAGE_SIZE);
+        kmemset((void *)pdpt, 0, PAGE_SIZE);
         pml4[pml4_idx] = pdpt | PTE_PRESENT | PTE_WRITABLE;
     }
     
@@ -44,7 +32,7 @@ static pte_t *get_pte(virt_addr_t virt, bool create) {
         if (!create) return NULL;
         phys_addr_t pd = pmm_alloc_page();
         if (!pd) return NULL;
-        memset((void *)pd, 0, PAGE_SIZE);
+        kmemset((void *)pd, 0, PAGE_SIZE);
         pdpt[pdpt_idx] = pd | PTE_PRESENT | PTE_WRITABLE;
     }
     
@@ -58,7 +46,7 @@ static pte_t *get_pte(virt_addr_t virt, bool create) {
         if (!create) return NULL;
         phys_addr_t pt = pmm_alloc_page();
         if (!pt) return NULL;
-        memset((void *)pt, 0, PAGE_SIZE);
+        kmemset((void *)pt, 0, PAGE_SIZE);
         pd[pd_idx] = pt | PTE_PRESENT | PTE_WRITABLE;
     }
     
@@ -133,8 +121,8 @@ struct AddressSpace *vmm_create_address_space(void) {
     pte_t *new_pml4 = (pte_t *)as->pml4;
     pte_t *kern_pml4 = (pte_t *)kernel_pml4;
     
-    memset(new_pml4, 0, PAGE_SIZE / 2);
-    memcpy(&new_pml4[256], &kern_pml4[256], PAGE_SIZE / 2);
+    kmemset(new_pml4, 0, PAGE_SIZE / 2);
+    kmemcpy(&new_pml4[256], &kern_pml4[256], PAGE_SIZE / 2);
     
     as->start = 0x1000;
     as->end = 0x00007FFFFFFFFFFFULL;
@@ -207,7 +195,7 @@ static pte_t *get_pte_in_space(struct AddressSpace *as, virt_addr_t virt, bool c
         if (!create) return NULL;
         phys_addr_t pdpt = pmm_alloc_page();
         if (!pdpt) return NULL;
-        memset((void *)pdpt, 0, PAGE_SIZE);
+        kmemset((void *)pdpt, 0, PAGE_SIZE);
         pml4[pml4_idx] = pdpt | PTE_PRESENT | PTE_WRITABLE | PTE_USER;
     }
     
@@ -217,7 +205,7 @@ static pte_t *get_pte_in_space(struct AddressSpace *as, virt_addr_t virt, bool c
         if (!create) return NULL;
         phys_addr_t pd = pmm_alloc_page();
         if (!pd) return NULL;
-        memset((void *)pd, 0, PAGE_SIZE);
+        kmemset((void *)pd, 0, PAGE_SIZE);
         pdpt[pdpt_idx] = pd | PTE_PRESENT | PTE_WRITABLE | PTE_USER;
     }
     
@@ -229,7 +217,7 @@ static pte_t *get_pte_in_space(struct AddressSpace *as, virt_addr_t virt, bool c
         if (!create) return NULL;
         phys_addr_t pt = pmm_alloc_page();
         if (!pt) return NULL;
-        memset((void *)pt, 0, PAGE_SIZE);
+        kmemset((void *)pt, 0, PAGE_SIZE);
         pd[pd_idx] = pt | PTE_PRESENT | PTE_WRITABLE | PTE_USER;
     }
     
@@ -260,7 +248,7 @@ struct AddressSpace *vmm_clone_address_space(struct AddressSpace *src) {
         }
         
         pte_t *dst_pdpt = (pte_t *)dst_pdpt_phys;
-        memset(dst_pdpt, 0, PAGE_SIZE);
+        kmemset(dst_pdpt, 0, PAGE_SIZE);
         dst_pml4[i] = dst_pdpt_phys | (src_pml4[i] & ~PTE_ADDR_MASK);
         
         for (int j = 0; j < 512; j++) {
@@ -276,7 +264,7 @@ struct AddressSpace *vmm_clone_address_space(struct AddressSpace *src) {
             }
             
             pte_t *dst_pd = (pte_t *)dst_pd_phys;
-            memset(dst_pd, 0, PAGE_SIZE);
+            kmemset(dst_pd, 0, PAGE_SIZE);
             dst_pdpt[j] = dst_pd_phys | (src_pdpt[j] & ~PTE_ADDR_MASK);
             
             for (int k = 0; k < 512; k++) {
@@ -292,7 +280,7 @@ struct AddressSpace *vmm_clone_address_space(struct AddressSpace *src) {
                 }
                 
                 pte_t *dst_pt = (pte_t *)dst_pt_phys;
-                memset(dst_pt, 0, PAGE_SIZE);
+                kmemset(dst_pt, 0, PAGE_SIZE);
                 dst_pd[k] = dst_pt_phys | (src_pd[k] & ~PTE_ADDR_MASK);
                 
                 for (int l = 0; l < 512; l++) {
@@ -399,7 +387,7 @@ int vmm_handle_cow_fault(virt_addr_t fault_addr) {
         return -ENOMEM;
     }
     
-    memcpy((void *)new_phys, (void *)old_phys, PAGE_SIZE);
+    kmemcpy((void *)new_phys, (void *)old_phys, PAGE_SIZE);
     
     uint64_t flags = *pte & ~PTE_ADDR_MASK;
     flags &= ~PTE_COW;

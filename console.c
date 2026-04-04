@@ -1,5 +1,6 @@
 #include "console.h"
 #include "x86_64.h"
+#include "kstring.h"
 
 #define VGA_BUFFER 0xB8000
 #define VGA_CTRL_PORT 0x3D4
@@ -415,24 +416,6 @@ static void shell_readline(char *buf, size_t size) {
     buf[pos] = '\0';
 }
 
-static int strcmp(const char *s1, const char *s2) {
-    while (*s1 && *s1 == *s2) {
-        s1++;
-        s2++;
-    }
-    return (unsigned char)*s1 - (unsigned char)*s2;
-}
-
-static int strncmp(const char *s1, const char *s2, size_t n) {
-    while (n && *s1 && *s1 == *s2) {
-        s1++;
-        s2++;
-        n--;
-    }
-    if (n == 0) return 0;
-    return (unsigned char)*s1 - (unsigned char)*s2;
-}
-
 static void cmd_help(void) {
     kprintf("Available commands:\n");
     kprintf("  help      - Show this help\n");
@@ -494,21 +477,21 @@ void shell_run(void) {
         if (line_buffer[0] == '\0')
             continue;
         
-        if (strcmp(line_buffer, "help") == 0) {
+        if (kstrcmp(line_buffer, "help") == 0) {
             cmd_help();
-        } else if (strcmp(line_buffer, "clear") == 0) {
+        } else if (kstrcmp(line_buffer, "clear") == 0) {
             cmd_clear();
-        } else if (strcmp(line_buffer, "mem") == 0) {
+        } else if (kstrcmp(line_buffer, "mem") == 0) {
             cmd_mem();
-        } else if (strcmp(line_buffer, "ps") == 0) {
+        } else if (kstrcmp(line_buffer, "ps") == 0) {
             cmd_ps();
-        } else if (strcmp(line_buffer, "uptime") == 0) {
+        } else if (kstrcmp(line_buffer, "uptime") == 0) {
             cmd_uptime();
-        } else if (strcmp(line_buffer, "reboot") == 0) {
+        } else if (kstrcmp(line_buffer, "reboot") == 0) {
             cmd_reboot();
-        } else if (strncmp(line_buffer, "ls", 2) == 0) {
+        } else if (kstrncmp(line_buffer, "ls", 2) == 0) {
             kprintf("(filesystem not fully implemented)\n");
-        } else if (strncmp(line_buffer, "cat ", 4) == 0) {
+        } else if (kstrncmp(line_buffer, "cat ", 4) == 0) {
             kprintf("(filesystem not fully implemented)\n");
         } else {
             kprintf("Unknown command: %s\n", line_buffer);

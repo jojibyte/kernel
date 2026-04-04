@@ -2,19 +2,7 @@
 #include "net.h"
 #include "heap.h"
 #include "console.h"
-
-static void *memset(void *s, int c, size_t n) {
-    uint8_t *p = s;
-    while (n--) *p++ = c;
-    return s;
-}
-
-static void *memcpy(void *dest, const void *src, size_t n) {
-    uint8_t *d = dest;
-    const uint8_t *s = src;
-    while (n--) *d++ = *s++;
-    return dest;
-}
+#include "kstring.h"
 
 #define UDP_MAX_SOCKETS     32
 #define UDP_RECV_QUEUE_SIZE 16
@@ -39,7 +27,7 @@ struct UdpSocket {
 static struct UdpSocket udp_sockets[UDP_MAX_SOCKETS];
 
 void udp_init(void) {
-    memset(udp_sockets, 0, sizeof(udp_sockets));
+    kmemset(udp_sockets, 0, sizeof(udp_sockets));
 }
 
 static struct UdpSocket *udp_find_socket(uint16_t port) {
@@ -118,7 +106,7 @@ int udp_socket_recvfrom(int sockfd, void *buf, size_t len,
     sock->recv_count--;
 
     size_t copy_len = dgram->len < len ? dgram->len : len;
-    memcpy(buf, dgram->data, copy_len);
+    kmemcpy(buf, dgram->data, copy_len);
 
     if (src_addr) *src_addr = dgram->src_addr;
     if (src_port) *src_port = dgram->src_port;
@@ -142,7 +130,7 @@ void udp_socket_close(int sockfd) {
         dgram = next;
     }
 
-    memset(sock, 0, sizeof(*sock));
+    kmemset(sock, 0, sizeof(*sock));
 }
 
 void udp_receive(struct IpHeader *ip, void *data, size_t len) {
@@ -172,7 +160,7 @@ void udp_receive(struct IpHeader *ip, void *data, size_t len) {
         return;
     }
 
-    memcpy(dgram->data, payload, payload_len);
+    kmemcpy(dgram->data, payload, payload_len);
     dgram->len = payload_len;
     dgram->src_addr.addr = ip->src_addr;
     dgram->src_port = src_port;
@@ -199,7 +187,7 @@ int udp_send(struct Ipv4Addr dest, uint16_t src_port, uint16_t dest_port,
     udp->length = htons((uint16_t)total);
     udp->checksum = 0;
 
-    memcpy(packet + sizeof(struct UdpHeader), data, len);
+    kmemcpy(packet + sizeof(struct UdpHeader), data, len);
 
     int result = ip_send(dest, IP_PROTO_UDP, packet, total);
     kfree(packet);

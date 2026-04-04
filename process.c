@@ -6,6 +6,7 @@
 #include "elf.h"
 #include "usermode.h"
 #include "vfs.h"
+#include "kstring.h"
 
 static struct Process *process_table[MAX_PROCESSES];
 static pid_t next_pid = 1;
@@ -13,27 +14,6 @@ static pid_t next_pid = 1;
 static struct Process *current_process = NULL;
 
 static struct Process idle_process;
-
-static void strncpy(char *dest, const char *src, size_t n) {
-    size_t i;
-    for (i = 0; i < n - 1 && src[i]; i++) {
-        dest[i] = src[i];
-    }
-    dest[i] = '\0';
-}
-
-static void *memset(void *s, int c, size_t n) {
-    uint8_t *p = s;
-    while (n--) *p++ = c;
-    return s;
-}
-
-static void *memcpy(void *dest, const void *src, size_t n) {
-    uint8_t *d = dest;
-    const uint8_t *s = src;
-    while (n--) *d++ = *s++;
-    return dest;
-}
 
 static pid_t alloc_pid(void) {
     for (pid_t i = 0; i < MAX_PROCESSES; i++) {
@@ -48,13 +28,13 @@ static pid_t alloc_pid(void) {
 }
 
 void process_init(void) {
-    memset(process_table, 0, sizeof(process_table));
+    kmemset(process_table, 0, sizeof(process_table));
     
-    memset(&idle_process, 0, sizeof(idle_process));
+    kmemset(&idle_process, 0, sizeof(idle_process));
     idle_process.pid = 0;
     idle_process.state = PROC_STATE_READY;
     idle_process.priority = PRIORITY_IDLE;
-    strncpy(idle_process.name, "idle", sizeof(idle_process.name));
+    kstrncpy(idle_process.name, "idle", sizeof(idle_process.name));
     idle_process.address_space = vmm_get_kernel_address_space();
     
     for (int i = 0; i < NSIG; i++) {
@@ -97,7 +77,7 @@ struct Process *process_create_kernel_thread(const char *name,
     proc->ppid = current_process ? current_process->pid : 0;
     proc->state = PROC_STATE_CREATED;
     proc->priority = PRIORITY_NORMAL;
-    strncpy(proc->name, name, sizeof(proc->name));
+    kstrncpy(proc->name, name, sizeof(proc->name));
     proc->address_space = vmm_get_kernel_address_space();
     proc->uid = 0;
     proc->gid = 0;
@@ -162,7 +142,7 @@ struct Process *process_create(const char *name, virt_addr_t entry, bool user) {
     proc->ppid = current_process ? current_process->pid : 0;
     proc->state = PROC_STATE_CREATED;
     proc->priority = PRIORITY_NORMAL;
-    strncpy(proc->name, name, sizeof(proc->name));
+    kstrncpy(proc->name, name, sizeof(proc->name));
     proc->uid = user ? 1000 : 0;
     proc->gid = user ? 1000 : 0;
     proc->euid = proc->uid;
@@ -312,14 +292,14 @@ pid_t process_fork(void) {
     
     child->pid = child_pid;
     child->ppid = parent->pid;
-    strncpy(child->name, parent->name, sizeof(child->name));
+    kstrncpy(child->name, parent->name, sizeof(child->name));
     
     child->state = PROC_STATE_READY;
     child->priority = parent->priority;
     child->exit_code = 0;
     
-    memcpy(&child->context, &parent->context, sizeof(struct CpuContext));
-    memcpy(&child->user_context, &parent->user_context, sizeof(struct UserContext));
+    kmemcpy(&child->context, &parent->context, sizeof(struct CpuContext));
+    kmemcpy(&child->user_context, &parent->user_context, sizeof(struct UserContext));
     
     child->user_stack = parent->user_stack;
     child->heap_start = parent->heap_start;
@@ -338,7 +318,7 @@ pid_t process_fork(void) {
     child->start_time = timer_get_ticks();
     child->cpu_time = 0;
     
-    memcpy(&child->signal_frame, &parent->signal_frame, sizeof(struct SignalFrame));
+    kmemcpy(&child->signal_frame, &parent->signal_frame, sizeof(struct SignalFrame));
     child->signal_frame.signal_pending = 0;
     
     
@@ -430,7 +410,7 @@ int process_execve(const char *path, char *const argv[], char *const envp[]) {
         if (*p == '/') name = p + 1;
         p++;
     }
-    strncpy(proc->name, name, sizeof(proc->name));
+    kstrncpy(proc->name, name, sizeof(proc->name));
     
     for (int i = 0; i < NSIG; i++) {
         if (proc->signal_frame.handlers[i].sa_handler != SIG_IGN) {
@@ -515,11 +495,11 @@ int process_sigaction(int sig, const struct Sigaction *act,
     if (sig == SIGKILL || sig == SIGSTOP) return -EINVAL;
     
     if (oldact) {
-        memcpy(oldact, &proc->signal_frame.handlers[sig], sizeof(struct Sigaction));
+        kmemcpy(oldact, &proc->signal_frame.handlers[sig], sizeof(struct Sigaction));
     }
     
     if (act) {
-        memcpy(&proc->signal_frame.handlers[sig], act, sizeof(struct Sigaction));
+        kmemcpy(&proc->signal_frame.handlers[sig], act, sizeof(struct Sigaction));
     }
     
     return 0;

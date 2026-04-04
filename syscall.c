@@ -10,14 +10,7 @@
 #include "net.h"
 #include "uaccess.h"
 #include "pipe.h"
-
-static void strncpy(char *dest, const char *src, size_t n) {
-    size_t i;
-    for (i = 0; i < n - 1 && src[i]; i++) {
-        dest[i] = src[i];
-    }
-    dest[i] = '\0';
-}
+#include "kstring.h"
 
 static int64_t sys_write(int fd, const void *buf, size_t count) {
     if (!access_ok(buf, count)) return -EFAULT;
@@ -221,11 +214,11 @@ struct Utsname {
 static int64_t sys_uname(struct Utsname *buf) {
     if (!buf) return -EFAULT;
     
-    strncpy(buf->sysname, "kernel", 65);
-    strncpy(buf->nodename, "localhost", 65);
-    strncpy(buf->release, "0.1.0", 65);
-    strncpy(buf->version, "x86-64 Kernel by jojibyte", 65);
-    strncpy(buf->machine, "x86_64", 65);
+    kstrncpy(buf->sysname, "kernel", 65);
+    kstrncpy(buf->nodename, "localhost", 65);
+    kstrncpy(buf->release, "0.1.0", 65);
+    kstrncpy(buf->version, "x86-64 Kernel by jojibyte", 65);
+    kstrncpy(buf->machine, "x86_64", 65);
     
     return 0;
 }
