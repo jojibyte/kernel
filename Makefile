@@ -46,6 +46,7 @@ C_SOURCES = kernel.c \
             udp.c \
             socket.c \
             syscall.c \
+            uaccess.c \
             usermode.c \
             elf.c
 

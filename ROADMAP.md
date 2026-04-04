@@ -180,7 +180,7 @@
 - [x] fork() implementation
 - [x] execve() implementation
 - [x] vfork() (alias to fork)
-- [ ] clone() with flags
+- [x] clone() with flags
 
 ### Signals
 - [x] Signal numbers (SIGKILL, SIGTERM, SIGSEGV, etc.)
@@ -196,9 +196,9 @@
 - [x] Zombie process reaping
 
 ### Memory Validation
-- [ ] User pointer validation
-- [ ] copy_from_user / copy_to_user
-- [ ] access_ok() checks
+- [x] User pointer validation
+- [x] copy_from_user / copy_to_user
+- [x] access_ok() checks
 
 ## Phase 13: POSIX Compatibility [TODO]
 ### Libc Foundation

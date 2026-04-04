@@ -8,6 +8,7 @@
 #include "vmm.h"
 #include "syscall.h"
 #include "net.h"
+#include "uaccess.h"
 
 static void strncpy(char *dest, const char *src, size_t n) {
     size_t i;
@@ -18,6 +19,8 @@ static void strncpy(char *dest, const char *src, size_t n) {
 }
 
 static int64_t sys_write(int fd, const void *buf, size_t count) {
+    if (!access_ok(buf, count)) return -EFAULT;
+
     if (fd == 1 || fd == 2) {
         console_write(buf, count);
         return count;
@@ -27,6 +30,8 @@ static int64_t sys_write(int fd, const void *buf, size_t count) {
 }
 
 static int64_t sys_read(int fd, void *buf, size_t count) {
+    if (!access_ok(buf, count)) return -EFAULT;
+
     if (fd == 0) {
         char *p = buf;
         for (size_t i = 0; i < count; i++) {
@@ -91,8 +96,40 @@ static int64_t sys_fork(void) {
 }
 
 static int64_t sys_execve(const char *path, char *const argv[], char *const envp[]) {
-    if (!path) return -EFAULT;
+    if (!access_ok(path, 1)) return -EFAULT;
     return process_execve(path, argv, envp);
+}
+
+#define CLONE_VM        0x00000100
+#define CLONE_FS        0x00000200
+#define CLONE_FILES     0x00000400
+#define CLONE_SIGHAND   0x00000800
+#define CLONE_THREAD    0x00010000
+
+static int64_t sys_clone(uint64_t flags, void *child_stack,
+                         void *ptid, void *ctid, uint64_t tls) {
+    (void)ptid;
+    (void)ctid;
+    (void)tls;
+
+    if (flags & CLONE_THREAD) {
+        return -ENOSYS;
+    }
+
+    if (child_stack && !access_ok(child_stack, 8))
+        return -EFAULT;
+
+    pid_t child = process_fork();
+    if (child < 0)
+        return child;
+
+    if (child == 0 && child_stack) {
+        struct Process *proc = process_current();
+        if (proc)
+            proc->user_stack = (uint64_t)child_stack;
+    }
+
+    return child;
 }
 
 static int64_t sys_wait4(pid_t pid, int *status, int options, void *rusage) {
@@ -256,6 +293,9 @@ int64_t syscall_handler(uint64_t syscall_num, struct SyscallArgs *args) {
         return sys_getegid();
     case SYS_EXIT:
         return sys_exit(args->arg1);
+    case SYS_CLONE:
+        return sys_clone(args->arg1, (void *)args->arg2,
+                         (void *)args->arg3, (void *)args->arg4, args->arg5);
     case SYS_FORK:
         return sys_fork();
     case SYS_EXECVE:
