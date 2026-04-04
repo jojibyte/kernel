@@ -200,26 +200,26 @@
 - [x] copy_from_user / copy_to_user
 - [x] access_ok() checks
 
-## Phase 13: POSIX Compatibility [TODO]
+## Phase 13: POSIX Compatibility [PARTIAL]
 ### Libc Foundation
-- [ ] String functions (strlen, strcpy, strcmp, memcpy, memset)
+- [x] String functions (strlen, strcpy, strcmp, memcpy, memset)
 - [ ] Memory allocation (malloc, free, realloc, calloc)
 - [ ] Standard I/O (printf, scanf, fopen, fread, fwrite)
-- [ ] Process functions (fork, exec, wait, exit)
+- [x] Process functions (fork, exec, wait, exit)
 - [ ] File descriptors and stdio
 
 ### System Calls (Linux-compatible numbers)
-- [ ] File I/O: open, close, read, write, lseek, dup, dup2
+- [x] File I/O: open, close, read, write, lseek, dup, dup2
 - [ ] File status: stat, fstat, lstat, access
 - [ ] Directory: getcwd, chdir, mkdir, rmdir, getdents
-- [ ] Process: fork, execve, wait4, exit, getpid, getppid
-- [ ] Memory: mmap, munmap, mprotect, brk
-- [ ] Signals: kill, sigaction, sigprocmask
+- [x] Process: fork, execve, wait4, exit, getpid, getppid
+- [x] Memory: mmap, munmap, mprotect, brk
+- [x] Signals: kill, sigaction, sigprocmask
 - [ ] Time: gettimeofday, nanosleep, clock_gettime
-- [ ] Misc: ioctl, fcntl, pipe, socket
+- [x] Misc: ioctl, fcntl, pipe, socket
 
-## Phase 13: Inter-Process Communication [TODO]
-- [ ] Pipes (anonymous)
+## Phase 13: Inter-Process Communication [PARTIAL]
+- [x] Pipes (anonymous)
 - [ ] Named pipes (FIFO)
 - [ ] Message queues
 - [ ] Shared memory (shmget, shmat, shmdt)

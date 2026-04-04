@@ -9,6 +9,7 @@
 #include "syscall.h"
 #include "net.h"
 #include "uaccess.h"
+#include "pipe.h"
 
 static void strncpy(char *dest, const char *src, size_t n) {
     size_t i;
@@ -325,6 +326,13 @@ int64_t syscall_handler(uint64_t syscall_num, struct SyscallArgs *args) {
     case SYS_RECVFROM:
         return sys_recvfrom(args->arg1, (void *)args->arg2, args->arg3,
                             args->arg4, (struct SockaddrIn *)args->arg5);
+    case SYS_PIPE:
+        if (!access_ok((void *)args->arg1, 2 * sizeof(int))) return -EFAULT;
+        return sys_pipe((int *)args->arg1);
+    case SYS_DUP:
+        return sys_dup(args->arg1);
+    case SYS_DUP2:
+        return sys_dup2(args->arg1, args->arg2);
     default:
         kprintf("[SYSCALL] Unknown syscall: %llu\n", (unsigned long long)syscall_num);
         return -ENOSYS;
